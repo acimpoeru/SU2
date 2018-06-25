@@ -119,6 +119,11 @@ public:
    * \brief A virtual member.
    */  
   virtual void Run() { };
+  
+  /*!
+   * \brief A virtual member. Now it can be called from StartSolver routine.
+   */  
+  virtual void PrimalAdvance() { };
 
   /*!
    * \brief Construction of the edge-based data structure and the multigrid structure.
@@ -269,6 +274,11 @@ public:
    * \brief Launch the computation for all zones and all physics.
    */
   void StartSolver();
+
+  /*!
+   * \brief Launch the computation for all zones and all physics.
+   */
+  void StartSolverCP();
 
   /*!
    * \brief A virtual member.
@@ -916,6 +926,16 @@ public:
    * \brief Run one iteration of the solver. It is virtual because it depends on the kind of physics.
    */
   virtual void DirectRun();
+  
+  /*!
+   * \brief Run one iteration of the solver. It is virtual because it depends on the kind of physics.
+   */
+  virtual void PrimalAdvance();
+  
+   /*!
+   * \brief Run one iteration of the solver. It is virtual because it depends on the kind of physics.
+   */
+  virtual void Update();
 
   /*!
    * \brief Set the objective function. It is virtual because it depends on the kind of physics.

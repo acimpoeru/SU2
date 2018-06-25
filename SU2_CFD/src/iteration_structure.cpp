@@ -477,17 +477,20 @@ void CFluidIteration::Iterate(COutput *output,
       config_container[val_iZone]->SetGlobalParam(EULER, RUNTIME_FLOW_SYS, ExtIter); break;
       
     case NAVIER_STOKES: case DISC_ADJ_NAVIER_STOKES:
-      config_container[val_iZone]->SetGlobalParam(NAVIER_STOKES, RUNTIME_FLOW_SYS, ExtIter); break;
-      
+      cout << "Before SetGlobalParam. ";
+      config_container[val_iZone]->SetGlobalParam(NAVIER_STOKES, RUNTIME_FLOW_SYS, ExtIter); cout << " After SetGlobalParam." << endl; break;
+
+
     case RANS: case DISC_ADJ_RANS:
       config_container[val_iZone]->SetGlobalParam(RANS, RUNTIME_FLOW_SYS, ExtIter); break;
       
   }
   
   /*--- Solve the Euler, Navier-Stokes or Reynolds-averaged Navier-Stokes (RANS) equations (one iteration) ---*/
-  
+  cout << "Before MultiGrid_Iteration. ";
   integration_container[val_iZone][FLOW_SOL]->MultiGrid_Iteration(geometry_container, solver_container, numerics_container,
                                                                   config_container, RUNTIME_FLOW_SYS, IntIter, val_iZone);
+  cout << " After MultiGrid_Iteration." << endl;
   
   if ((config_container[val_iZone]->GetKind_Solver() == RANS) ||
       ((config_container[val_iZone]->GetKind_Solver() == DISC_ADJ_RANS) && !frozen_visc)) {
@@ -1761,13 +1764,14 @@ void CDiscAdjFluidIteration::Preprocess(COutput *output,
         /*--- Load solution at timestep n-2 ---*/
 
         LoadUnsteady_Solution(geometry_container, solver_container,config_container, val_iZone, Direct_Iter-2);
+        //LoadUnsteady_Solution(geometry_container, solver_container,config_container, val_iZone, Direct_Iter-1);
 
         /*--- Push solution back to correct array ---*/
 
         for (iMesh=0; iMesh<=config_container[val_iZone]->GetnMGLevels();iMesh++) {
           for(iPoint=0; iPoint<geometry_container[val_iZone][iMesh]->GetnPoint();iPoint++) {
-            solver_container[val_iZone][iMesh][FLOW_SOL]->node[iPoint]->Set_Solution_time_n();
-            solver_container[val_iZone][iMesh][FLOW_SOL]->node[iPoint]->Set_Solution_time_n1();
+            solver_container[val_iZone][iMesh][FLOW_SOL]->node[iPoint]->Set_Solution_time_n(); //pushes solution from solution to solution_n
+            solver_container[val_iZone][iMesh][FLOW_SOL]->node[iPoint]->Set_Solution_time_n1(); // again pushes one back to n-1
             if (turbulent) {
               solver_container[val_iZone][iMesh][TURB_SOL]->node[iPoint]->Set_Solution_time_n();
               solver_container[val_iZone][iMesh][TURB_SOL]->node[iPoint]->Set_Solution_time_n1();
@@ -1780,6 +1784,7 @@ void CDiscAdjFluidIteration::Preprocess(COutput *output,
         /*--- Load solution at timestep n-1 ---*/
 
         LoadUnsteady_Solution(geometry_container, solver_container,config_container, val_iZone, Direct_Iter-1);
+        //LoadUnsteady_Solution(geometry_container, solver_container,config_container, val_iZone, Direct_Iter);
 
         /*--- Push solution back to correct array ---*/
 
@@ -1795,7 +1800,7 @@ void CDiscAdjFluidIteration::Preprocess(COutput *output,
 
       /*--- Load solution timestep n ---*/
 
-      LoadUnsteady_Solution(geometry_container, solver_container,config_container, val_iZone, Direct_Iter);
+     LoadUnsteady_Solution(geometry_container, solver_container,config_container, val_iZone, Direct_Iter);
 
     }
 
@@ -1827,7 +1832,7 @@ void CDiscAdjFluidIteration::Preprocess(COutput *output,
           }
         }
       }
-      if (dual_time_1st){
+      if (dual_time_1st){ // Bug in brace-setting: the statement 2 blocks down should also be excecuted for dual_time_1st
       /*--- Set Solution at timestep n-1 to the previously loaded solution ---*/
         for (iMesh=0; iMesh<=config_container[val_iZone]->GetnMGLevels();iMesh++) {
           for(iPoint=0; iPoint<geometry_container[val_iZone][iMesh]->GetnPoint();iPoint++) {
@@ -1848,6 +1853,7 @@ void CDiscAdjFluidIteration::Preprocess(COutput *output,
             }
           }
         }
+              }//relocated bracket
         /*--- Set Solution at timestep n-2 to the previously loaded solution ---*/
         for (iMesh=0; iMesh<=config_container[val_iZone]->GetnMGLevels();iMesh++) {
           for(iPoint=0; iPoint<geometry_container[val_iZone][iMesh]->GetnPoint();iPoint++) {
@@ -1857,7 +1863,7 @@ void CDiscAdjFluidIteration::Preprocess(COutput *output,
             }
           }
         }
-      }
+
     }
   }
 
@@ -1905,6 +1911,7 @@ void CDiscAdjFluidIteration::LoadUnsteady_Solution(CGeometry ***geometry_contain
       cout << " Setting freestream conditions at direct iteration " << val_DirectIter << "." << endl;
     for (iMesh=0; iMesh<=config_container[val_iZone]->GetnMGLevels();iMesh++) {
       solver_container[val_iZone][iMesh][FLOW_SOL]->SetFreeStream_Solution(config_container[val_iZone]);
+      cout << "CDiscAdjFluidIteration::LoadUnsteady_Solution" << endl;
       solver_container[val_iZone][iMesh][FLOW_SOL]->Preprocessing(geometry_container[val_iZone][iMesh],solver_container[val_iZone][iMesh], config_container[val_iZone], iMesh, val_DirectIter, RUNTIME_FLOW_SYS, false);
       if (turbulent) {
         solver_container[val_iZone][iMesh][TURB_SOL]->SetFreeStream_Solution(config_container[val_iZone]);
@@ -2053,6 +2060,7 @@ void CDiscAdjFluidIteration::SetDependencies(CSolver ****solver_container, CGeom
   solver_container[iZone][MESH_0][FLOW_SOL]->Set_MPI_Solution(geometry_container[iZone][MESH_0], config_container[iZone]);
 
   if ((Kind_Solver == DISC_ADJ_RANS) && !frozen_visc){
+    cout << "CDiscAdjFluidIteration::SetDependencies" << endl;
     solver_container[iZone][MESH_0][FLOW_SOL]->Preprocessing(geometry_container[iZone][MESH_0],solver_container[iZone][MESH_0], config_container[iZone], MESH_0, NO_RK_ITER, RUNTIME_FLOW_SYS, true);
     solver_container[iZone][MESH_0][TURB_SOL]->Postprocessing(geometry_container[iZone][MESH_0],solver_container[iZone][MESH_0], config_container[iZone], MESH_0);
     solver_container[iZone][MESH_0][TURB_SOL]->Set_MPI_Solution(geometry_container[iZone][MESH_0], config_container[iZone]);

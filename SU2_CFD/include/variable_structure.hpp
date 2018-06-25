@@ -65,6 +65,7 @@ protected:
   su2double *Solution_time_n,  /*!< \brief Solution of the problem at time n for dual-time stepping technique. */
   *Solution_time_n1;      /*!< \brief Solution of the problem at time n-1 for dual-time stepping technique. */
   su2double **Gradient;    /*!< \brief Gradient of the solution of the problem. */
+  su2double **Checkpoints;   /*!< \brief Field to hold the primal Checkpoints for transient Adjoint computation. */
   su2double *Limiter;        /*!< \brief Limiter of the solution of the problem. */
   su2double *Solution_Max;    /*!< \brief Max solution for limiter computation. */
   su2double *Solution_Min;    /*!< \brief Min solution for limiter computation. */
@@ -91,6 +92,7 @@ protected:
                                                        note that this variable cannnot be static, it is possible to
                                                        have different number of nVar in the same problem. */
   su2double *Solution_Adj_Old;    /*!< \brief Solution of the problem in the previous AD-BGS iteration. */
+  unsigned short nCheckpoint; /*!< \brief number of checkpoints stored in RAM, necessary for "delete" in Deconstructor. */
   
 public:
   
@@ -189,6 +191,12 @@ public:
    * \brief Set old variables to the value of the current variables.
    */
   void Set_OldSolution(void);
+  
+  /*!
+   * \brief Fill Checkpoint with the value of the current variables.
+   * \param[in] iCheckpoint - position in the Checkpoints array 
+   */
+  void Set_Checkpoint(unsigned short iCheckpoint);
 
   /*!
    * \brief Set variables to the value of the old variables.
@@ -339,6 +347,13 @@ public:
    * \return Pointer to the solution vector.
    */
   su2double *GetSolution(void);
+  
+  
+  /*!
+   * \brief Get the solution stored in the specified checkpoint.
+   * \return Pointer to the solution vector of the checkpoint.
+   */
+  su2double *GetCheckpoint(unsigned short iCheckpoint);
   
   /*!
    * \brief Get the old solution of the problem (Runge-Kutta method)
@@ -2016,6 +2031,13 @@ public:
    * \return Value of the solution for the index <i>val_var</i>.
    */
   virtual su2double GetSolution_time_n(unsigned short val_var);
+  
+   /*!
+   * \brief Get the solution at time n-1.
+   * \param[in] val_var - Index of the variable.
+   * \return Value of the solution for the index <i>val_var</i>.
+   */
+  virtual su2double GetSolution_time_n1(unsigned short val_var);
   
   /*!
    * \brief Get the velocity (Structural Analysis).
@@ -5052,7 +5074,7 @@ public:
       */
      su2double GetSolution_Vel_time_n(unsigned short val_var);
 
-       /*!
+      /*!
       * \brief Get the solution at time n.
       * \param[in] val_var - Index of the variable.
       * \return Value of the solution for the index <i>val_var</i>.

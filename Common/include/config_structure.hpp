@@ -1006,6 +1006,10 @@ private:
   su2double *FreeStreamTurboNormal; /*!< \brief Direction to initialize the flow in turbomachinery computation */
   su2double Max_Beta; /*!< \brief Maximum Beta parameter (incompressible preconditioning) in the domain */
   ofstream *ConvHistFile;       /*!< \brief Store the pointer to each history file */
+  bool Checkpointing; /*!< \brief Flag to know if Checkpointing is used */
+  unsigned long CheckpointingSnaps; /*!< \brief Number of Snapshots (stored Solutions) used */
+  unsigned long CheckpointingSteps; /*!< \brief Number of Steps (Timesteps)  */
+  unsigned long CheckpointingSnapsInRAM; /*!< \brief Number of Snapshots (stored Solutions) in Memory used  */
 
   /*--- all_options is a map containing all of the options. This is used during config file parsing
    to track the options which have not been set (so the default values can be used). Without this map
@@ -1327,6 +1331,30 @@ public:
    * \param[in] Communicator - MPI communicator for SU2.
    */
   void SetMPICommunicator(SU2_MPI::Comm Communicator);
+
+  /*!
+   * \brief Get the indicator whether we are using Checkpointing.
+   * \return the checkpointing indicator.
+   */
+  bool GetCheckpointing(void);
+  
+  /*!
+   * \brief Get the number of Snapshots that will be stored during Checkpointing.
+   * \return Number of Snapshots availabe.
+   */
+  unsigned long GetCheckpointingSnaps(void);
+  
+  /*!
+   * \brief Get the number of steps that will be performed by the timestepping scheme.
+   * \return Number of Steps that will be made.
+   */
+  unsigned long GetCheckpointingSteps(void);
+  
+  /*!
+   * \brief Get the number of Snapshots that will be stored in Memory during Checkpointing. Difference to Snaps will be stored on Disk.
+   * \return Number of Snapshots available in RAM (Memory).
+   */
+  unsigned long GetCheckpointingSnapsInRAM(void);
 
   /*!
    * \brief Gets the number of zones in the mesh file.
@@ -8071,6 +8099,12 @@ public:
    * \return the discrete adjoint indicator.
    */
   bool GetDiscrete_Adjoint(void);
+  
+  /*!
+   * \brief Set the indicator whether we are solving an discrete adjoint problem. Necessary for Primal output from the Discret Adjoint Driver for checkpointing.
+   * \param[in] Discrete_Adjoint - true=DiscAdj, false=noDiscAdj.
+   */
+  void SetDiscrete_Adjoint(bool Discrete_Adjoint);
   
   /*!
    * \brief Get the indicator whether we want to benchmark the MPI performance of FSI problems
