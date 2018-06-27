@@ -1759,12 +1759,11 @@ void CDiscAdjFluidIteration::Preprocess(COutput *output,
 
     if (ExtIter == 0){
 
-      if (dual_time_2nd) {
+      if (dual_time_2nd || dual_time_1st) {
 
         /*--- Load solution at timestep n-2 ---*/
 
         LoadUnsteady_Solution(geometry_container, solver_container,config_container, val_iZone, Direct_Iter-2);
-        //LoadUnsteady_Solution(geometry_container, solver_container,config_container, val_iZone, Direct_Iter-1);
 
         /*--- Push solution back to correct array ---*/
 
@@ -1784,13 +1783,12 @@ void CDiscAdjFluidIteration::Preprocess(COutput *output,
         /*--- Load solution at timestep n-1 ---*/
 
         LoadUnsteady_Solution(geometry_container, solver_container,config_container, val_iZone, Direct_Iter-1);
-        //LoadUnsteady_Solution(geometry_container, solver_container,config_container, val_iZone, Direct_Iter);
 
         /*--- Push solution back to correct array ---*/
 
         for (iMesh=0; iMesh<=config_container[val_iZone]->GetnMGLevels();iMesh++) {
           for(iPoint=0; iPoint<geometry_container[val_iZone][iMesh]->GetnPoint();iPoint++) {
-            solver_container[val_iZone][iMesh][FLOW_SOL]->node[iPoint]->Set_Solution_time_n();
+            solver_container[val_iZone][iMesh][FLOW_SOL]->node[iPoint]->Set_Solution_time_n();//pushes solution to solution_n
             if (turbulent) {
               solver_container[val_iZone][iMesh][TURB_SOL]->node[iPoint]->Set_Solution_time_n();
             }
@@ -1832,7 +1830,9 @@ void CDiscAdjFluidIteration::Preprocess(COutput *output,
           }
         }
       }
-      if (dual_time_1st){ // Bug in brace-setting: the statement 2 blocks down should also be excecuted for dual_time_1st
+      if (dual_time_1st){ 
+      // Bug in brace-setting: the statement 2 blocks down should also be excecuted for dual_time_1st
+      // This part is identical with the block below which is excecuted for dual time stepping 2nd
       /*--- Set Solution at timestep n-1 to the previously loaded solution ---*/
         for (iMesh=0; iMesh<=config_container[val_iZone]->GetnMGLevels();iMesh++) {
           for(iPoint=0; iPoint<geometry_container[val_iZone][iMesh]->GetnPoint();iPoint++) {

@@ -63,3 +63,5 @@ bin/
 
 TestData
 *.stl
+
+auto-install.sh

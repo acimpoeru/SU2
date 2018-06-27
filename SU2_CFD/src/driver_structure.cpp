@@ -3325,28 +3325,50 @@ void CDriver::StartSolver() {
 }
 
 void CDriver::StartSolverCP() {
-    
+  /*--- Primal ---*/  
   for (int i = 0; i < 10; i++) {
+    /*--- Here Flow-solver initial conditions are called ---*/  
     PreprocessExtIter(ExtIter);
     cout << "PrimalAdvance()" << endl;
-    PrimalAdvance();
-    DynamicMeshUpdate(ExtIter);
-    //Update(); doesnt exist for CDiscAdjFluidDriver
-    /*--- The primal iteration needs the Update of CFluidIteration ---*/
-    //for(iZone = 0; iZone < nZone; iZone++)
-     // direct_iteration[iZone]->Update(output, integration_container, geometry_container, solver_container, numerics_container, config_container, surface_movement, grid_movement, FFDBox, iZone);
+    cout << "ExtIter: " << ExtIter << endl;
     
-    cout << "Writing adjoint." << endl;
-    Output(ExtIter);
+    /*--- Advance one physical primal step by looping over multiple internal iter ---*/
+    PrimalAdvance();
+    
+    /*--- doesnt exist for CDiscAdjFluidDriver, Pushes Solution->Solution_time_n and Solution_time_n->Solution_time_n1 ---*/
+    Update(); 
+    
+    //cout << "Writing adjoint." << endl;
+    //Output(ExtIter);
+    
+    /*--- Temporarily change config to write primal output ---*/
     config_container[ZONE_0]->SetKind_Solver(NAVIER_STOKES);
     config_container[ZONE_0]->SetDiscrete_Adjoint(false);
     cout << "Writing primal." << endl;
     Output(ExtIter);
     config_container[ZONE_0]->SetKind_Solver(DISC_ADJ_NAVIER_STOKES);
     config_container[ZONE_0]->SetDiscrete_Adjoint(true);
+    
+    
     if (StopCalc) break;
     ExtIter++;
   }
+  
+  ExtIter = 0;
+  cout << "Entering Adjoint loop." << endl;
+  /*--- Adjoint ---*/  
+  for (int i=0; i<10; i++) {
+      //cout << "ExtIter: " << ExtIter << endl;
+      PreprocessExtIter(ExtIter);
+      DynamicMeshUpdate(ExtIter);
+      Run();
+      //Update();
+      Monitor(ExtIter);
+      Output(ExtIter);
+      
+      ExtIter++;
+  }
+  
     cout << "Directly before error message." << endl;
   throw std::invalid_argument("Entered checkpoinitng routine.");
   /*--- Main external loop of the solver. Within this loop, each iteration ---*/
@@ -4411,7 +4433,7 @@ void CDiscAdjFluidDriver::DirectRun(){
 void CDiscAdjFluidDriver::PrimalAdvance(){
 
 
-  unsigned short iZone, jZone;
+  unsigned short iZone, jZone, iPoint;
   bool unsteady = config_container[ZONE_0]->GetUnsteady_Simulation() != STEADY;
   
   unsigned long IntIter, nIntIter;
@@ -4425,17 +4447,25 @@ void CDiscAdjFluidDriver::PrimalAdvance(){
 
   /*--- Zone preprocessing ---*/
   //added: this loads the restart files, in iteration_structure.cpp - CDiscAdjFluidIteration->Preprocess()
-  cout << "ExtIter: " << ExtIter << endl;
   //Here it has to be checked whether it is the beginning of an advance cycle and then for DualTime2nd just 2 steps has to be loaded 
   //as it is a simple primal solver restart, maybe just set ExtIter to 0 at the beginning of every advance cycle
   if (ExtIter == 0) {
     for (iZone = 0; iZone < nZone; iZone++) {
     cout << "Iteration container Preprocess." << endl;
-    iteration_container[iZone]->Preprocess(output, integration_container, geometry_container,
-                                                     solver_container, numerics_container, config_container,
-                                                     surface_movement, grid_movement, FFDBox, iZone);
+    /*--- loads time steps for adjoint taping ---*/
+    //iteration_container[iZone]->Preprocess(output, integration_container, geometry_container, solver_container, numerics_container, config_container, surface_movement, grid_movement, FFDBox, iZone);
+    
+    /*--- Initializes Primal with freestream values, not explicitly necessary as initialization is done with fressstream valuies anyway ---*/
+      //cout << "Initialze Primal by using the values at infinity (freestream)." << endl;
+      //solver_container[iZone][MESH_0][FLOW_SOL]->SetFreeStream_Solution(config_container[iZone]);
+      //for (iPoint = 0; iPoint < geometry_container[ZONE_0][MESH_0]->GetnPoint(); iPoint++) {
+        //solver_container[iZone][MESH_0][FLOW_SOL]->node[iPoint]->Set_Solution_time_n();
+        //solver_container[iZone][MESH_0][FLOW_SOL]->node[iPoint]->Set_Solution_time_n1();
+      //}
     }
   }
+  
+  /*--- applies only to windgust and fsi ---*/
   for (iZone = 0; iZone < nZone; iZone++)
     direct_iteration[iZone]->Preprocess(output, integration_container, geometry_container, solver_container, numerics_container, config_container, surface_movement, grid_movement, FFDBox, iZone);
 
@@ -4505,7 +4535,7 @@ void CDiscAdjFluidDriver::PrimalAdvance(){
 }
 
 void CDiscAdjFluidDriver::Update() {
-
+  /*--- Advance fowward in time for Primal steps ---*/
   if (config_container[ZONE_0]->GetCheckpointing()) {
     for(iZone = 0; iZone < nZone; iZone++)
       direct_iteration[iZone]->Update(output, integration_container, geometry_container,
