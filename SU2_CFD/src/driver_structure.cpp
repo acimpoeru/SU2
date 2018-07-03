@@ -3394,7 +3394,11 @@ void CDriver::StartSolverRevolve() {
     int info,snaps,steps;
     enum ACTION::action whatodo;
     bool turbulent = ( config_container[ZONE_0]->GetKind_Solver() == DISC_ADJ_RANS );
-    int iPoint;
+    bool CP_in_RAM = false;
+    int iPoint, iMesh;
+    bool rans = ((config_container[ZONE_0]->GetKind_Solver() == RANS) ||
+                 (config_container[ZONE_0]->GetKind_Solver() == ADJ_RANS) ||
+                 (config_container[ZONE_0]->GetKind_Solver() == DISC_ADJ_RANS));
     
     steps = config_container[ZONE_0]->GetCheckpointingSteps();
     snaps = config_container[ZONE_0]->GetCheckpointingSnaps();
@@ -3409,6 +3413,7 @@ void CDriver::StartSolverRevolve() {
 		whatodo = r->revolve();
 		if (whatodo == ACTION::takeshot)
 		{
+            
             /*--- Compute 1st timestep at the start of the primal solver to store a full checkpoint  ---*/
             if (r->getcapo() == 0) {
                 PreprocessExtIter(0);
@@ -3423,6 +3428,10 @@ void CDriver::StartSolverRevolve() {
                 config_container[ZONE_0]->SetKind_Solver(DISC_ADJ_NAVIER_STOKES); config_container[ZONE_0]->SetDiscrete_Adjoint(true);
                  //throw std::invalid_argument("One timestep done, exiting.");
             }
+             
+             if (CP_in_RAM) {
+             
+            /*--- takeshot in RAM ---*/
             
             /*--- Save Checkpoint in RAM ---*/
             for(iPoint=0; iPoint < geometry_container[ZONE_0][MESH_0]->GetnPoint(); iPoint++) {
@@ -3431,7 +3440,76 @@ void CDriver::StartSolverRevolve() {
                  solver_container[ZONE_0][MESH_0][TURB_SOL]->node[iPoint]->Set_Checkpoint(r->getcheck()*3);
                }
             }
+        } else {
+            /*--- takeshot on DISK, 3 timesteps have to be saved here!!! Sol is clear, n & n1 not so (Storing with wrong primitives should be possible, needs to be put into solution) ---*/
+            /*--- So store sol, pushup n, (comp primVars), store sol, pushup n1, (store primVars), store Sol  ---*/
+            cout << "Writing primal checkpoint ROM at: " << r->getcheck() << endl;
+            //Save the output on DISK using Output(iter)
+            /*--- Store Sol ---*/
+            config_container[ZONE_0]->SetKind_Solver(NAVIER_STOKES); config_container[ZONE_0]->SetDiscrete_Adjoint(false);
+            config_container[ZONE_0]->SetExtIter(100 + r->getcheck()*3 + 0);
+            //Output( 100 + r->getcheck()*3 + 0 ); // 100 general offset, +0 CP offset 
+            output->SetResult_Files_Parallel(solver_container, geometry_container, config_container, 100 + r->getcheck()*3 + 0, nZone);
+            //output->WriteRestart_Parallel_ASCII(config_container[ZONE_0], geometry_container[ZONE_0][MESH_0], solver_container[ZONE_0][MESH_0], ZONE_0);
+            //throw std::invalid_argument("Output test.");
+            config_container[ZONE_0]->SetKind_Solver(DISC_ADJ_NAVIER_STOKES); config_container[ZONE_0]->SetDiscrete_Adjoint(true);
             
+            /*--- store current solution in sol_old (to not kill the advance cycle), pushup n ---*/
+            for (iMesh=0; iMesh<=config_container[ZONE_0]->GetnMGLevels();iMesh++) {
+              for(iPoint=0; iPoint<geometry_container[ZONE_0][iMesh]->GetnPoint();iPoint++) {
+                 solver_container[ZONE_0][iMesh][FLOW_SOL]->node[iPoint]->Set_OldSolution();
+                 if (turbulent){
+                   solver_container[ZONE_0][iMesh][TURB_SOL]->node[iPoint]->Set_OldSolution();
+                 }
+              }
+            }
+            
+            for (iMesh=0; iMesh<=config_container[ZONE_0]->GetnMGLevels();iMesh++) {
+              for(iPoint=0; iPoint<geometry_container[ZONE_0][iMesh]->GetnPoint();iPoint++) {
+                solver_container[ZONE_0][iMesh][FLOW_SOL]->node[iPoint]->SetSolution(solver_container[ZONE_0][iMesh][FLOW_SOL]->node[iPoint]->GetSolution_time_n());
+                if (turbulent) {
+                  solver_container[ZONE_0][iMesh][TURB_SOL]->node[iPoint]->SetSolution(solver_container[ZONE_0][iMesh][TURB_SOL]->node[iPoint]->GetSolution_time_n());
+                }
+              }
+            }
+            
+            /*--- Store Sol ---*/
+            config_container[ZONE_0]->SetKind_Solver(NAVIER_STOKES); config_container[ZONE_0]->SetDiscrete_Adjoint(false);
+            config_container[ZONE_0]->SetExtIter(100 + r->getcheck()*3 + 1);
+            //Output( 100 + r->getcheck()*3 + 1 ); // 100 general offset, +1 CP offset 
+            output->SetResult_Files_Parallel(solver_container, geometry_container, config_container, 100 + r->getcheck()*3 + 1, nZone);
+            //output->WriteRestart_Parallel_ASCII(config_container[ZONE_0], geometry_container[ZONE_0][MESH_0], solver_container[ZONE_0][MESH_0], ZONE_0);
+            config_container[ZONE_0]->SetKind_Solver(DISC_ADJ_NAVIER_STOKES); config_container[ZONE_0]->SetDiscrete_Adjoint(true);
+            
+            /*--- pushup n1 ---*/
+            for (iMesh=0; iMesh<=config_container[ZONE_0]->GetnMGLevels();iMesh++) {
+              for(iPoint=0; iPoint<geometry_container[ZONE_0][iMesh]->GetnPoint();iPoint++) {
+                solver_container[ZONE_0][iMesh][FLOW_SOL]->node[iPoint]->SetSolution(solver_container[ZONE_0][iMesh][FLOW_SOL]->node[iPoint]->GetSolution_time_n1());
+                if (turbulent) {
+                  solver_container[ZONE_0][iMesh][TURB_SOL]->node[iPoint]->SetSolution(solver_container[ZONE_0][iMesh][TURB_SOL]->node[iPoint]->GetSolution_time_n1());
+                }
+              }
+            }
+            
+            /*--- Store Sol ---*/
+            config_container[ZONE_0]->SetKind_Solver(NAVIER_STOKES); config_container[ZONE_0]->SetDiscrete_Adjoint(false);
+            config_container[ZONE_0]->SetExtIter(100 + r->getcheck()*3 + 2);
+            //Output( 100 + r->getcheck()*3 + 2 ); // 100 general offset, +2 CP offset for DT_2nd
+            output->SetResult_Files_Parallel(solver_container, geometry_container, config_container, 100 + r->getcheck()*3 + 2, nZone);
+            //output->WriteRestart_Parallel_ASCII(config_container[ZONE_0], geometry_container[ZONE_0][MESH_0], solver_container[ZONE_0][MESH_0], ZONE_0);
+            config_container[ZONE_0]->SetKind_Solver(DISC_ADJ_NAVIER_STOKES); config_container[ZONE_0]->SetDiscrete_Adjoint(true);
+            
+            /*--- restore Sol from sol_old ---*/
+            for (iMesh=0; iMesh<=config_container[ZONE_0]->GetnMGLevels();iMesh++) {
+              for(iPoint=0; iPoint<geometry_container[ZONE_0][iMesh]->GetnPoint();iPoint++) {
+                solver_container[ZONE_0][iMesh][FLOW_SOL]->node[iPoint]->SetSolution(solver_container[ZONE_0][iMesh][FLOW_SOL]->node[iPoint]->GetSolution_Old());
+                if (turbulent) {
+                  solver_container[ZONE_0][iMesh][TURB_SOL]->node[iPoint]->SetSolution(solver_container[ZONE_0][iMesh][TURB_SOL]->node[iPoint]->GetSolution_Old());
+                }
+              }
+            }
+            
+        }
 			if(info > 1)
 				cout << " takeshot at " << setw(6) << r->getcapo() << " in CP " << r->getcheck() << endl;
 			
@@ -3482,7 +3560,7 @@ void CDriver::StartSolverRevolve() {
             //Output(j);
             //config_container[ZONE_0]->SetKind_Solver(DISC_ADJ_NAVIER_STOKES); config_container[ZONE_0]->SetDiscrete_Adjoint(true);
 
-            /*--- Do first Adjoint Step, is correct because it reads the correct restart_flows which schouldn't happen if CP is finished ---*/
+            /*--- Do first Adjoint Step, is correct because it reads the correct restart_flows which shouldn't happen if CP is finished ---*/
             
             if (true) {
             cout << "First Adjoint Step with ExtITer: " << ExtIter << endl;
@@ -3495,6 +3573,7 @@ void CDriver::StartSolverRevolve() {
             Monitor(ExtIter);
             Output(ExtIter);
             ExtIter++;
+            //throw std::invalid_argument("Stop at end of Firstturn.");
         }
             
 			if(info > 2)
@@ -3518,18 +3597,25 @@ void CDriver::StartSolverRevolve() {
 		}
 		if (whatodo == ACTION::restore) 
 		{
+            
+          if ( CP_in_RAM ) {
             if (false) {
-            cout << "ACTION::RESTORE" << endl;
+            cout << "ACTION::RESTORE in RAM" << endl;
             int j = 66;
             PreprocessExtIter(j); }
-            
+                    
             /*--- Restore Checkpoint from RAM ---*/
 			for(iPoint=0; iPoint < geometry_container[ZONE_0][MESH_0]->GetnPoint(); iPoint++) {
                  solver_container[ZONE_0][MESH_0][FLOW_SOL]->node[iPoint]->Restore_Checkpoint(r->getcheck()*3);
                  if (turbulent) {
                    solver_container[ZONE_0][MESH_0][TURB_SOL]->node[iPoint]->Restore_Checkpoint(r->getcheck()*3);
                  }
-            }
+             }
+
+            /*--- Restore Checkpoint from DISK ---*/
+            
+            //using LoadRestart()
+
             
             if (false) { int j = 66;
                   /*--- Print cons[0] for the first 10 points for the timesteps n-1, n, n+1 ---*/
@@ -3547,7 +3633,7 @@ void CDriver::StartSolverRevolve() {
                   cout << endl;
                   }
             
-            /*--- Reconstruct Primitive variables ---*/
+            /*--- Reconstruct Primitive variables ... doesn't seem to be necessary if afterwards a full advance step is done. But still necessary for a primal output after restore ---*/
             
             solver_container[ZONE_0][MESH_0][FLOW_SOL]->Set_MPI_Solution(geometry_container[ZONE_0][MESH_0], config_container[ZONE_0]);
             cout << "solver_container->Preprocessing" << endl;
@@ -3592,11 +3678,52 @@ void CDriver::StartSolverRevolve() {
             config_container[ZONE_0]->SetKind_Solver(DISC_ADJ_NAVIER_STOKES); config_container[ZONE_0]->SetDiscrete_Adjoint(true);
             
             throw std::invalid_argument("Stop at first CP Restore.");
+          }
+        } else {
+            cout << "ACTION::RESTORE on DISK" << endl;
+            /*--- Load the three restart_files, and put them at legit positions ---*/
+            /*--- Load n1, pushback twice, load n, pushback once, load sol  ---*/
+            
+            /*--- Load n1 ---*/
+            //last variable updategeo always true except for FSI
+            int val_iter = 100 + r->getcheck()*3 + 2;
+            solver_container[ZONE_0][MESH_0][FLOW_SOL]->LoadRestart(geometry_container[ZONE_0], solver_container[ZONE_0], config_container[ZONE_0], val_iter, true);
+            
+            /*--- pushback twice ---*/
+            cout << " Restore: Push current back solution to n1. " << endl;
+              for (iPoint = 0; iPoint < geometry_container[ZONE_0][MESH_0]->GetnPoint(); iPoint++) {
+                solver_container[ZONE_0][MESH_0][FLOW_SOL]->node[iPoint]->Set_Solution_time_n();
+                solver_container[ZONE_0][MESH_0][FLOW_SOL]->node[iPoint]->Set_Solution_time_n1();
+                if (rans) {
+                  solver_container[ZONE_0][MESH_0][TURB_SOL]->node[iPoint]->Set_Solution_time_n();
+                  solver_container[ZONE_0][MESH_0][TURB_SOL]->node[iPoint]->Set_Solution_time_n1();
+                }
+              }
+            
+            
+            /*--- Load n ---*/
+            val_iter = 100 + r->getcheck()*3 + 1;
+            solver_container[ZONE_0][MESH_0][FLOW_SOL]->LoadRestart(geometry_container[ZONE_0], solver_container[ZONE_0], config_container[ZONE_0], val_iter, true);
+            
+            /*--- pushback once ---*/
+            cout << " Restore: Push current back solution to n. " << endl;
+              for (iPoint = 0; iPoint < geometry_container[ZONE_0][MESH_0]->GetnPoint(); iPoint++) {
+                solver_container[ZONE_0][MESH_0][FLOW_SOL]->node[iPoint]->Set_Solution_time_n();
+                if (rans) {
+                  solver_container[ZONE_0][MESH_0][TURB_SOL]->node[iPoint]->Set_Solution_time_n();
+                }
+              }
+            
+            /*--- Load sol ---*/
+            val_iter = 100 + r->getcheck()*3 + 0;
+            solver_container[ZONE_0][MESH_0][FLOW_SOL]->LoadRestart(geometry_container[ZONE_0], solver_container[ZONE_0], config_container[ZONE_0], val_iter, true);
+            
         }
             
 			if(info > 2)
 				cout << " restore at " << setw(7) << r->getcapo() << " in CP " << r->getcheck() << endl;
 		}
+        
 		if (whatodo == ACTION::error)
 		{
 			cout << " irregular termination of revolve \n";
@@ -3825,7 +3952,7 @@ void CDriver::Output(unsigned long ExtIter) {
 
   /*--- Export Surface Solution File for Unsteady Simulations ---*/
   /*--- When calculate mean/fluctuation option will be available, delete the following part ---*/
-  if ((config_container[ZONE_0]->GetUnsteady_Simulation() == DT_STEPPING_2ND) && (ExtIter % config_container[ZONE_0]->GetWrt_Surf_Freq_DualTime() == 0)) {
+  if ((config_container[ZONE_0]->GetUnsteady_Simulation() == DT_STEPPING_2ND) && (ExtIter % config_container[ZONE_0]->GetWrt_Surf_Freq_DualTime() == 0) && config_container[ZONE_0]->GetWrt_Srf_Sol()) {
       output->SetSurfaceCSV_Flow(config_container[ZONE_0], geometry_container[ZONE_0][MESH_0], solver_container[ZONE_0][MESH_0][FLOW_SOL], ExtIter, ZONE_0);}
 
 }
@@ -4732,20 +4859,20 @@ void CDiscAdjFluidDriver::PrimalAdvance(){
 
   for (IntIter = 0; IntIter < nIntIter; IntIter++) {
       
-      /*--- Print cons[0] for the first 10 points for the timesteps n-1, n, n+1 ---*/
-      for(iZone = 0; iZone < nZone; iZone++) {
-      /*--- Print cons[0] for the first 10 points for the timesteps n-1, n, n+1 ---*/
-      cout << "Print Cons[0] for the first 10 points in the mesh. 1st Solution, 2nd Solution_n, 3rd Solution_n1 " << endl;
-      for (int iPoint = 1000; iPoint < 1010; iPoint++) 
-        cout << setprecision(15) << scientific << solver_container[iZone][MESH_0][FLOW_SOL]->node[iPoint]->GetSolution(0) << " ";
-      cout << endl;
-      for (int iPoint = 1000; iPoint < 1010; iPoint++) 
-        cout << setprecision(15) << scientific << solver_container[iZone][MESH_0][FLOW_SOL]->node[iPoint]->GetSolution_time_n(0) << " ";
-      cout << endl;
-      for (int iPoint = 1000; iPoint < 1010; iPoint++) 
-        cout << setprecision(15) << scientific << solver_container[iZone][MESH_0][FLOW_SOL]->node[iPoint]->GetSolution_time_n1(0) << " ";
-      cout << endl;
-    }
+      ///*--- Print cons[0] for the first 10 points for the timesteps n-1, n, n+1 ---*/
+      //for(iZone = 0; iZone < nZone; iZone++) {
+      ///*--- Print cons[0] for the first 10 points for the timesteps n-1, n, n+1 ---*/
+      //cout << "Print Cons[0] for the first 10 points in the mesh. 1st Solution, 2nd Solution_n, 3rd Solution_n1 " << endl;
+      //for (int iPoint = 1000; iPoint < 1010; iPoint++) 
+        //cout << setprecision(15) << scientific << solver_container[iZone][MESH_0][FLOW_SOL]->node[iPoint]->GetSolution(0) << " ";
+      //cout << endl;
+      //for (int iPoint = 1000; iPoint < 1010; iPoint++) 
+        //cout << setprecision(15) << scientific << solver_container[iZone][MESH_0][FLOW_SOL]->node[iPoint]->GetSolution_time_n(0) << " ";
+      //cout << endl;
+      //for (int iPoint = 1000; iPoint < 1010; iPoint++) 
+        //cout << setprecision(15) << scientific << solver_container[iZone][MESH_0][FLOW_SOL]->node[iPoint]->GetSolution_time_n1(0) << " ";
+      //cout << endl;
+    //}
       
   /*--- Do one iteration of the direct solver  --*/
 
