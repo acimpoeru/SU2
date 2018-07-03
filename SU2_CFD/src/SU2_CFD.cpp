@@ -165,7 +165,8 @@ int main(int argc, char *argv[]) {
   cout << "Before StartSolver()." << endl;
   if ( checkpointing ) {
       cout << "In StartSolver() with CP." << endl;
-    driver->StartSolverCP();    
+    //driver->StartSolverCP(); 
+    driver->StartSolverRevolve();   
   } else {
       cout << "In StartSolver() without CP." << endl;
   driver->StartSolver();

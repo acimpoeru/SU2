@@ -4222,7 +4222,7 @@ void CEulerSolver::SetInitialCondition(CGeometry **geometry, CSolver ***solver_c
     
     /*--- Push back the initial condition to previous solution containers
      for a 1st-order restart or when simply intitializing to freestream. ---*/
-    cout << " Restart: Push current back solution to n1. " << endl;
+    cout << " Restart or set IC: Push current back solution to n1. " << endl;
     for (iMesh = 0; iMesh <= config->GetnMGLevels(); iMesh++) {
       for (iPoint = 0; iPoint < geometry[iMesh]->GetnPoint(); iPoint++) {
         solver_container[iMesh][FLOW_SOL]->node[iPoint]->Set_Solution_time_n();
@@ -4238,12 +4238,10 @@ void CEulerSolver::SetInitialCondition(CGeometry **geometry, CSolver ***solver_c
         (config->GetUnsteady_Simulation() == DT_STEPPING_2ND)) {
       
       /*--- Load an additional restart file for a 2nd-order restart ---*/
-      cout << " Restart in Solver: Loading flow solution from direct iteration " << config->GetUnst_RestartIter()-2  << "." << endl;
+      cout << " Restart in Solver: Loading flow solution from direct iteration " << config->GetUnst_RestartIter()-1  << "." << endl;
 
-      solver_container[MESH_0][FLOW_SOL]->LoadRestart(geometry, solver_container, config, SU2_TYPE::Int(config->GetUnst_RestartIter()-2), true);
-      //solver_container[MESH_0][FLOW_SOL]->LoadRestart(geometry, solver_container, config, SU2_TYPE::Int(config->GetUnst_RestartIter()-1), true);
-
-      
+      solver_container[MESH_0][FLOW_SOL]->LoadRestart(geometry, solver_container, config, SU2_TYPE::Int(config->GetUnst_RestartIter()-1), true);
+      //modified solver_container[MESH_0][FLOW_SOL]->LoadRestart(geometry, solver_container, config, SU2_TYPE::Int(config->GetUnst_RestartIter()-2), true);    
       /*--- Load an additional restart file for the turbulence model ---*/
       if (rans)
         solver_container[MESH_0][TURB_SOL]->LoadRestart(geometry, solver_container, config, SU2_TYPE::Int(config->GetUnst_RestartIter()-1), false);
@@ -4259,8 +4257,8 @@ void CEulerSolver::SetInitialCondition(CGeometry **geometry, CSolver ***solver_c
         }
       }
       //following 2 lines added
-      cout << " Restart in Solver: Loading flow solution from direct iteration " << config->GetUnst_RestartIter()-1  << "." << endl;
-      solver_container[MESH_0][FLOW_SOL]->LoadRestart(geometry, solver_container, config, SU2_TYPE::Int(config->GetUnst_RestartIter()-1), true);
+      //cout << " Restart in Solver: Loading flow solution from direct iteration " << config->GetUnst_RestartIter()-1  << "." << endl;
+      //solver_container[MESH_0][FLOW_SOL]->LoadRestart(geometry, solver_container, config, SU2_TYPE::Int(config->GetUnst_RestartIter()-1), true);
     }
     
     //added for DT_STEPPING_1ST, start
@@ -13901,8 +13899,7 @@ void CEulerSolver::LoadRestart(CGeometry **geometry, CSolver ***solver, CConfig 
    it down to the coarse levels. We alo call the preprocessing routine
    on the fine level in order to have all necessary quantities updated,
    especially if this is a turbulent simulation (eddy viscosity). ---*/
-  cout << "CEulerSolver::LoadRestart" << endl;
-  solver[MESH_0][FLOW_SOL]->Set_MPI_Solution(geometry[MESH_0], config);
+   
   solver[MESH_0][FLOW_SOL]->Set_MPI_Solution(geometry[MESH_0], config);
   solver[MESH_0][FLOW_SOL]->Preprocessing(geometry[MESH_0], solver[MESH_0], config, MESH_0, NO_RK_ITER, RUNTIME_FLOW_SYS, false);
 
@@ -13923,8 +13920,6 @@ void CEulerSolver::LoadRestart(CGeometry **geometry, CSolver ***solver, CConfig 
       solver[iMesh][FLOW_SOL]->node[iPoint]->SetSolution(Solution);
     }
     solver[iMesh][FLOW_SOL]->Set_MPI_Solution(geometry[iMesh], config);
-    solver[iMesh][FLOW_SOL]->Set_MPI_Solution(geometry[iMesh], config);
-    cout << "CEulerSolver::LoadRestart" << endl;
     solver[iMesh][FLOW_SOL]->Preprocessing(geometry[iMesh], solver[iMesh], config, iMesh, NO_RK_ITER, RUNTIME_FLOW_SYS, false);
   }
 
@@ -16046,7 +16041,6 @@ void CNSSolver::Preprocessing(CGeometry *geometry, CSolver **solver_container, C
   }
 
   /*--- Initialize the Jacobian matrices ---*/
-  cout << "NSSolver: Jacobian set to zero." << endl;
   if (implicit && !config->GetDiscrete_Adjoint()) Jacobian.SetValZero();
 
   /*--- Error message ---*/

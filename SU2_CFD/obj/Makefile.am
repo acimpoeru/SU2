@@ -72,6 +72,7 @@ libSU2Core_sources = \
   ../include/numerics_structure.inl \
   ../include/output_structure.hpp \
   ../include/output_structure.inl \
+  ../include/revolve.hpp \
   ../include/solver_structure.hpp \
   ../include/solver_structure.inl \
   ../include/SU2_CFD.hpp \
@@ -113,6 +114,7 @@ libSU2Core_sources = \
   ../src/output_su2.cpp \
   ../src/output_paraview.cpp \
   ../src/python_wrapper_structure.cpp \
+  ../src/revolve.cpp \
   ../src/solver_adjoint_mean.cpp \
   ../src/solver_adjoint_turbulent.cpp \
   ../src/solver_adjoint_discrete.cpp \

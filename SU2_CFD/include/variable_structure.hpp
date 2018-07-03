@@ -197,6 +197,12 @@ public:
    * \param[in] iCheckpoint - position in the Checkpoints array 
    */
   void Set_Checkpoint(unsigned short iCheckpoint);
+  
+  /*!
+   * \brief Fills the primal solution of the solver container with state(s) in Checkpoint.
+   * \param[in] iCheckpoint - position in the Checkpoints array 
+   */
+  void Restore_Checkpoint(unsigned short iCheckpoint);
 
   /*!
    * \brief Set variables to the value of the old variables.

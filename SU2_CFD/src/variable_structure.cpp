@@ -147,7 +147,8 @@ CVariable::CVariable(unsigned short val_nDim, unsigned short val_nvar, CConfig *
     
     /*--- if checkpointing is used, allocate & initialize Checkpoints memory ---*/
     if (config->GetCheckpointing()) {
-        nCheckpoint = config->GetCheckpointingSnaps();
+        //The *3 is just temporarily for dual time stepping as 3 states have to be stored. Add another layer to Checkpoints to solve that
+        nCheckpoint = config->GetCheckpointingSnaps()*3;
         Checkpoints = new su2double* [nCheckpoint];
         for (iCheckpoint = 0; iCheckpoint < nCheckpoint; iCheckpoint++) {
             Checkpoints[iCheckpoint] = new su2double [nVar];
@@ -234,10 +235,30 @@ void CVariable::Set_OldSolution(void) {
 void CVariable::Set_Checkpoint(unsigned short iCheckpoint) {
 
   if (iCheckpoint < nCheckpoint) {
-    for (unsigned short iVar = 0; iVar < nVar; iVar++)
-      Checkpoints[iCheckpoint][iVar] = Solution[iVar];
+      
+    for (unsigned short iVar = 0; iVar < nVar; iVar++) {
+      Checkpoints[iCheckpoint][iVar]   = Solution[iVar];
+      Checkpoints[iCheckpoint+1][iVar] = Solution_time_n[iVar];
+      Checkpoints[iCheckpoint+2][iVar] = Solution_time_n1[iVar];
+    }
+      
   } else {
-      cout << "CHECKPOINT OUT OF BOUNDS!!!" << endl;
+      cout << "CHECKPOINT OUT OF BOUNDS!" << endl;
+  }
+}
+
+void CVariable::Restore_Checkpoint(unsigned short iCheckpoint) {
+
+  if (iCheckpoint < nCheckpoint) {
+      
+    for (unsigned short iVar = 0; iVar < nVar; iVar++) {
+      Solution[iVar]         = Checkpoints[iCheckpoint][iVar];
+      Solution_time_n[iVar]  = Checkpoints[iCheckpoint+1][iVar];
+      Solution_time_n1[iVar] = Checkpoints[iCheckpoint+2][iVar];
+    }
+      
+  } else {
+      cout << "CHECKPOINT OUT OF BOUNDS!" << endl;
   }
 }
 

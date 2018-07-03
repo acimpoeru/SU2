@@ -109,7 +109,6 @@ void CMultiGridIntegration::MultiGrid_Iteration(CGeometry ***geometry,
                   Iteration, iZone);
 
   /*--- Computes primitive variables and gradients in the finest mesh (useful for the next solver (turbulence) and output ---*/
-   cout << "CMultiGridIntegration::MultiGrid_Iteration." << endl;
    solver_container[iZone][MESH_0][SolContainer_Position]->Preprocessing(geometry[iZone][MESH_0],
                                                                          solver_container[iZone][MESH_0], config[iZone],
                                                                          MESH_0, NO_RK_ITER, RunTime_EqSystem, true);
@@ -155,11 +154,8 @@ void CMultiGridIntegration::MultiGrid_Cycle(CGeometry ***geometry,
     for (iRKStep = 0; iRKStep < iRKLimit; iRKStep++) {
       
       /*--- Send-Receive boundary conditions, and preprocessing ---*/
-      cout << "CMultiGridIntegration::MultiGrid_Cycle" << endl;
       solver_container[iZone][iMesh][SolContainer_Position]->Preprocessing(geometry[iZone][iMesh], solver_container[iZone][iMesh], config[iZone], iMesh, iRKStep, RunTime_EqSystem, false);
-      //from multgrid_iteration
-      //solver_container[iZone][MESH_0][SolContainer_Position]->Preprocessing(geometry[iZone][MESH_0],solver_container[iZone][MESH_0], config[iZone],MESH_0, NO_RK_ITER, RunTime_EqSystem, true);
-      
+
       if (iRKStep == 0) {
         
         /*--- Set the old solution ---*/

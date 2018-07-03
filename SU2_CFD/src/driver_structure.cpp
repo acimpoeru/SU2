@@ -38,7 +38,7 @@
 #include "../include/driver_structure.hpp"
 #include "../include/definition_structure.hpp"
 
-#include "revolve.hpp"
+#include "../include/revolve.hpp"
 #include <stdexcept>
  
 CDriver::CDriver(char* confFile,
@@ -1180,11 +1180,11 @@ void CDriver::Solver_Restart(CSolver ***solver_container, CGeometry **geometry,
    these restart routines fill the fine grid and interpolate to all MG levels. ---*/
 
   if (restart || restart_flow) {
-            cout << " Restart in driver: Loading flow solution from direct iteration " << val_iter -1 << "." << endl;
+            cout << " Restart in driver: Loading flow solution from direct iteration " << val_iter << "." << endl;
     if (euler || ns) {
         cout << " Restarting euler or ns." << endl;
-      solver_container[MESH_0][FLOW_SOL]->LoadRestart(geometry, solver_container, config, val_iter-1, update_geo);
-      //solver_container[MESH_0][FLOW_SOL]->LoadRestart(geometry, solver_container, config, val_iter, update_geo);
+      //modified solver_container[MESH_0][FLOW_SOL]->LoadRestart(geometry, solver_container, config, val_iter-1, update_geo);
+      solver_container[MESH_0][FLOW_SOL]->LoadRestart(geometry, solver_container, config, val_iter, update_geo);
 
     }
     if (turbulent) {
@@ -3335,7 +3335,7 @@ void CDriver::StartSolverCP() {
     /*--- Advance one physical primal step by looping over multiple internal iter ---*/
     PrimalAdvance();
     
-    /*--- doesnt exist for CDiscAdjFluidDriver, Pushes Solution->Solution_time_n and Solution_time_n->Solution_time_n1 ---*/
+    /*--- doesnt exist for CDiscAdjFluidDriver, Pushes Solution->Solution_time_n and Solution_time_n->Solution_time_n1, so mustnt be called during adjoint run  ---*/
     Update(); 
     
     //cout << "Writing adjoint." << endl;
@@ -3374,7 +3374,7 @@ void CDriver::StartSolverCP() {
   /*--- Main external loop of the solver. Within this loop, each iteration ---*/
 
   if (rank == MASTER_NODE)
-    cout << endl <<"------------------------------ Begin Solver With Checkpointing-----------------------------" << endl;
+    cout << endl << "------------------------------ Begin Solver With Checkpointing-----------------------------" << endl;
 
   while ( ExtIter < config_container[ZONE_0]->GetnExtIter() ) {
     PreprocessExtIter(ExtIter);
@@ -3386,9 +3386,267 @@ void CDriver::StartSolverCP() {
     
     if (StopCalc) break;
     ExtIter++;
-
   }
+}
 
+void CDriver::StartSolverRevolve() {
+    Revolve *r;
+    int info,snaps,steps;
+    enum ACTION::action whatodo;
+    bool turbulent = ( config_container[ZONE_0]->GetKind_Solver() == DISC_ADJ_RANS );
+    int iPoint;
+    
+    steps = config_container[ZONE_0]->GetCheckpointingSteps();
+    snaps = config_container[ZONE_0]->GetCheckpointingSnaps();
+    info = 3;
+    
+    // Constructor for Offline Checkpointing without Multi-Stage
+    r = new Revolve(steps,snaps);
+    r->set_info(info);
+	
+	do
+	{
+		whatodo = r->revolve();
+		if (whatodo == ACTION::takeshot)
+		{
+            /*--- Compute 1st timestep at the start of the primal solver to store a full checkpoint  ---*/
+            if (r->getcapo() == 0) {
+                PreprocessExtIter(0);
+                /*--- Advance one physical primal step by looping over multiple internal iter ---*/
+                PrimalAdvance();
+                /*--- doesn't (before) exist for CDiscAdjFluidDriver, Pushes primal Solution->Solution_time_n and Solution_time_n->Solution_time_n1 ---*/
+                //Update(); no update because it pushes solution which results in wrong checkpoint
+                
+                config_container[ZONE_0]->SetKind_Solver(NAVIER_STOKES); config_container[ZONE_0]->SetDiscrete_Adjoint(false);
+                cout << "Writing primal checkpoint at: " << 0 << endl;
+                Output(0);
+                config_container[ZONE_0]->SetKind_Solver(DISC_ADJ_NAVIER_STOKES); config_container[ZONE_0]->SetDiscrete_Adjoint(true);
+                 //throw std::invalid_argument("One timestep done, exiting.");
+            }
+            
+            /*--- Save Checkpoint in RAM ---*/
+            for(iPoint=0; iPoint < geometry_container[ZONE_0][MESH_0]->GetnPoint(); iPoint++) {
+               solver_container[ZONE_0][MESH_0][FLOW_SOL]->node[iPoint]->Set_Checkpoint(r->getcheck()*3);
+               if (turbulent){
+                 solver_container[ZONE_0][MESH_0][TURB_SOL]->node[iPoint]->Set_Checkpoint(r->getcheck()*3);
+               }
+            }
+            
+			if(info > 1)
+				cout << " takeshot at " << setw(6) << r->getcapo() << " in CP " << r->getcheck() << endl;
+			
+		}
+		if (whatodo == ACTION::advance) 
+		{
+            
+            /*--- +1 because first step was already made in the first takeshot ---*/
+			for(int j=r->getoldcapo()+1;j < r->getcapo()+1;j++)
+			{   
+                cout << "ADVANCE: " << j << endl;
+                /*--- Here Flow-solver initial conditions are called ---*/  
+                PreprocessExtIter(j);
+                
+                /*--- doesn't (before) exist for CDiscAdjFluidDriver, Pushes primal Solution->Solution_time_n and Solution_time_n->Solution_time_n1 ---*/
+                /*--- therefore (sol push) this must be done after takeshot ---*/
+                if (j == r->getoldcapo()+1 )
+                    Update(); 
+                
+                /*--- Advance one physical primal step by looping over multiple internal iter ---*/
+                PrimalAdvance();
+                
+                /*--- doesn't (before) exist for CDiscAdjFluidDriver, Pushes primal Solution->Solution_time_n and Solution_time_n->Solution_time_n1 ---*/
+                /*--- therefore (sol push) this mustn't be done before takeshot ---*/
+                if (j != r->getcapo()+1-1 )
+                    Update(); 
+                
+                /*--- Temporarily change config to write primal output ---*/
+                config_container[ZONE_0]->SetKind_Solver(NAVIER_STOKES); config_container[ZONE_0]->SetDiscrete_Adjoint(false);
+                cout << "Writing primal at: " << j << endl;
+                Output(j);
+                config_container[ZONE_0]->SetKind_Solver(DISC_ADJ_NAVIER_STOKES); config_container[ZONE_0]->SetDiscrete_Adjoint(true);
+                
+                //Is commenting ExtIter valid? Or is it used somewhere in the functions? Could be found out with ExtIter = j and OldExtiter = ExtIter
+                //ExtIter++;
+			}
+			if(info > 2)
+				cout << " advance to " << setw(7) << r->getcapo() << endl;
+		}	
+		if (whatodo == ACTION::firsturn)
+		{
+            //int j = config_container[ZONE_0]->GetCheckpointingSteps() - 1; 
+            ///*--- Do Last Primal Step ---*/
+			//PreprocessExtIter(j);
+            //PrimalAdvance();
+            //config_container[ZONE_0]->SetKind_Solver(NAVIER_STOKES); config_container[ZONE_0]->SetDiscrete_Adjoint(false);
+            //cout << "Writing primal at: " << j << endl;
+            //Output(j);
+            //config_container[ZONE_0]->SetKind_Solver(DISC_ADJ_NAVIER_STOKES); config_container[ZONE_0]->SetDiscrete_Adjoint(true);
+
+            /*--- Do first Adjoint Step, is correct because it reads the correct restart_flows which schouldn't happen if CP is finished ---*/
+            
+            if (true) {
+            cout << "First Adjoint Step with ExtITer: " << ExtIter << endl;
+            PreprocessExtIter(ExtIter);
+            DynamicMeshUpdate(ExtIter);
+            Run();
+            /*--- This needs to be done, otherwise wrong primal solution after restore and 1 iteration ---*/
+            solver_container[ZONE_0][MESH_0][FLOW_SOL]->Jacobian.SetValZero();
+            //Update(); no update for adjoint solver only for primal
+            Monitor(ExtIter);
+            Output(ExtIter);
+            ExtIter++;
+        }
+            
+			if(info > 2)
+				cout << " firsturn at " << setw(6) << r->getcapo() << endl;
+		}
+		if (whatodo == ACTION::youturn) 
+		{
+			PreprocessExtIter(ExtIter);
+            DynamicMeshUpdate(ExtIter);
+            Run();
+            /*--- Probalby here necessary too as it is also for  ---*/
+            solver_container[ZONE_0][MESH_0][FLOW_SOL]->Jacobian.SetValZero();
+            //Update();
+            Monitor(ExtIter);
+            Output(ExtIter);
+            if (StopCalc) break;
+            ExtIter++;
+            
+			if(info > 2)
+				cout << " youturn at " << setw(7) << r->getcapo() << endl;	
+		}
+		if (whatodo == ACTION::restore) 
+		{
+            if (false) {
+            cout << "ACTION::RESTORE" << endl;
+            int j = 66;
+            PreprocessExtIter(j); }
+            
+            /*--- Restore Checkpoint from RAM ---*/
+			for(iPoint=0; iPoint < geometry_container[ZONE_0][MESH_0]->GetnPoint(); iPoint++) {
+                 solver_container[ZONE_0][MESH_0][FLOW_SOL]->node[iPoint]->Restore_Checkpoint(r->getcheck()*3);
+                 if (turbulent) {
+                   solver_container[ZONE_0][MESH_0][TURB_SOL]->node[iPoint]->Restore_Checkpoint(r->getcheck()*3);
+                 }
+            }
+            
+            if (false) { int j = 66;
+                  /*--- Print cons[0] for the first 10 points for the timesteps n-1, n, n+1 ---*/
+                  for(iZone = 0; iZone < nZone; iZone++) {
+                  /*--- Print cons[0] for the first 10 points for the timesteps n-1, n, n+1 ---*/
+                  cout << "Print Cons[0] for the first 10 points in the mesh. 1st Solution, 2nd Solution_n, 3rd Solution_n1 " << endl;
+                  for (int iPoint = 1000; iPoint < 1010; iPoint++) 
+                      cout << setprecision(15) << scientific <<  solver_container[iZone][MESH_0][FLOW_SOL]->node[iPoint]->GetSolution(0) << " ";
+                  cout << endl;
+                  for (int iPoint = 1000; iPoint < 1010; iPoint++) 
+                      cout << setprecision(15) << scientific << solver_container[iZone][MESH_0][FLOW_SOL]->node[iPoint]->GetSolution_time_n(0) << " ";
+                  cout << endl;
+                  for (int iPoint = 1000; iPoint < 1010; iPoint++) 
+                      cout << setprecision(15) << scientific << solver_container[iZone][MESH_0][FLOW_SOL]->node[iPoint]->GetSolution_time_n1(0) << " ";
+                  cout << endl;
+                  }
+            
+            /*--- Reconstruct Primitive variables ---*/
+            
+            solver_container[ZONE_0][MESH_0][FLOW_SOL]->Set_MPI_Solution(geometry_container[ZONE_0][MESH_0], config_container[ZONE_0]);
+            cout << "solver_container->Preprocessing" << endl;
+            solver_container[ZONE_0][MESH_0][FLOW_SOL]->Preprocessing(geometry_container[ZONE_0][MESH_0], solver_container[ZONE_0][MESH_0], config_container[ZONE_0], MESH_0, NO_RK_ITER, RUNTIME_FLOW_SYS, false);
+            /*--- From CMultigridIteration::NonDimensional_Parameters called in Multigrid_Iteration right after solver->Preprocessing ---*/
+            solver_container[ZONE_0][MESH_0][FLOW_SOL]->Pressure_Forces(geometry_container[ZONE_0][MESH_0], config_container[ZONE_0]);
+            solver_container[ZONE_0][MESH_0][FLOW_SOL]->Momentum_Forces(geometry_container[ZONE_0][MESH_0], config_container[ZONE_0]);
+            solver_container[ZONE_0][MESH_0][FLOW_SOL]->Friction_Forces(geometry_container[ZONE_0][MESH_0], config_container[ZONE_0]);
+
+            /*--- output restored solution, only CONS are stored so they are correct ---*/
+            /*--- Some step to recompute all Primitives needs to be included ---*/
+
+            Update();
+            config_container[ZONE_0]->SetKind_Solver(NAVIER_STOKES); config_container[ZONE_0]->SetDiscrete_Adjoint(false);
+            cout << "Writing primal at: " << j << endl;
+            Output(j);
+            config_container[ZONE_0]->SetKind_Solver(DISC_ADJ_NAVIER_STOKES); config_container[ZONE_0]->SetDiscrete_Adjoint(true);
+            
+            /*--- Print cons[0] for the first 10 points for the timesteps n-1, n, n+1 ---*/
+                  for(iZone = 0; iZone < nZone; iZone++) {
+                  /*--- Print cons[0] for the first 10 points for the timesteps n-1, n, n+1 ---*/
+                  cout << "Print Cons[0] for the first 10 points in the mesh. 1st Solution, 2nd Solution_n, 3rd Solution_n1 " << endl;
+                  for (int iPoint = 1000; iPoint < 1010; iPoint++) 
+                      cout << setprecision(15) << scientific << solver_container[iZone][MESH_0][FLOW_SOL]->node[iPoint]->GetSolution(0) << " ";
+                  cout << endl;
+                  for (int iPoint = 1000; iPoint < 1010; iPoint++) 
+                      cout << setprecision(15) << scientific << solver_container[iZone][MESH_0][FLOW_SOL]->node[iPoint]->GetSolution_time_n(0) << " ";
+                  cout << endl;
+                  for (int iPoint = 1000; iPoint < 1010; iPoint++) 
+                      cout << setprecision(15) << scientific << solver_container[iZone][MESH_0][FLOW_SOL]->node[iPoint]->GetSolution_time_n1(0) << " ";
+                  cout << endl;
+                  }
+            
+            //do 1 timestep from 7 to 8
+            j++;
+            PreprocessExtIter(j);
+            PrimalAdvance();
+            Update();
+            config_container[ZONE_0]->SetKind_Solver(NAVIER_STOKES); config_container[ZONE_0]->SetDiscrete_Adjoint(false);
+            cout << "Writing primal at: " << j << endl;
+            Output(j);
+            config_container[ZONE_0]->SetKind_Solver(DISC_ADJ_NAVIER_STOKES); config_container[ZONE_0]->SetDiscrete_Adjoint(true);
+            
+            throw std::invalid_argument("Stop at first CP Restore.");
+        }
+            
+			if(info > 2)
+				cout << " restore at " << setw(7) << r->getcapo() << " in CP " << r->getcheck() << endl;
+		}
+		if (whatodo == ACTION::error)
+		{
+			cout << " irregular termination of revolve \n";
+			switch (r->getinfo())
+			{
+				case 10:
+					cout << " number of checkpoints stored exceeds checkup, \n";
+					cout << " increase constant 'checkup' and recompile \n";
+					abort();
+				case 11:
+					cout << " number of checkpoints stored = " << r->getcheck()+1 << " exceeds snaps = " << snaps << endl;
+					cout << " ensure 'snaps' > 0 and increase initial 'fine' \n";
+					abort();
+				case 12:
+					cout << " error occurs in numforw \n";
+					abort();
+				case 13:
+					cout << " enhancement of 'fine', 'snaps' checkpoints stored, \n";
+					cout << " increase 'snaps'\n";
+					abort();
+				case 14:
+					cout << " number of snaps exceeds snapsup, ";
+					cout << " increase constant 'snapsup' and recompile \n";
+					abort();
+				case 15:
+					cout << " number of reps exceeds repsup, ";
+					cout << " increase constant 'repsup' and recompile \n";
+					abort();
+			}
+		}
+	}
+    while ((whatodo != ACTION::terminate) && (whatodo != ACTION::error));
+	delete r;
+}
+
+void CDriver::StartSolverEquidistant() {
+    
+    int i;
+    
+    /*--- Checkpointing with equidistant snapshots ---*/
+    /*--- Full primal Run with storing CP's in between ---*/
+    for (i=0; i<config_container[ZONE_0]->GetCheckpointingSteps(); i++) {
+        
+    }
+    
+    /*--- Adjoint run with CP reconstruction and primal recomputation ---*/
+    for (i=0; i<config_container[ZONE_0]->GetCheckpointingSteps(); i++) {
+        
+    }
+    
 }
 
 void CDriver::PreprocessExtIter(unsigned long ExtIter) {
@@ -3676,52 +3934,47 @@ void CFluidDriver::Run() {
 
   for (IntIter = 0; IntIter < nIntIter; IntIter++) {
       
-      for(iZone = 0; iZone < nZone; iZone++) {
-      /*--- Print cons[0] for the first 10 points for the timesteps n-1, n, n+1 ---*/
-      cout << "Print Cons[0] for the first 10 points in the mesh. 1st Solution, 2nd Solution_n, 3rd Solution_n1 " << endl;
-      for (int iPoint = 1000; iPoint < 1010; iPoint++) 
-        cout << setprecision(15) << solver_container[iZone][MESH_0][FLOW_SOL]->node[iPoint]->GetSolution(0) << " ";
-      cout << endl;
-      for (int iPoint = 1000; iPoint < 1010; iPoint++) 
-        cout << solver_container[iZone][MESH_0][FLOW_SOL]->node[iPoint]->GetSolution_time_n(0) << " ";
-      cout << endl;
-      for (int iPoint = 1000; iPoint < 1010; iPoint++) 
-        cout << solver_container[iZone][MESH_0][FLOW_SOL]->node[iPoint]->GetSolution_time_n1(0) << " ";
-      cout << endl;
-    }
+      //for(iZone = 0; iZone < nZone; iZone++) {
+      ///*--- Print cons[0] for the first 10 points for the timesteps n-1, n, n+1 ---*/
+      //cout << "Print Cons[0] for the first 10 points in the mesh. 1st Solution, 2nd Solution_n, 3rd Solution_n1 " << endl;
+      //for (int iPoint = 1000; iPoint < 1010; iPoint++) 
+        //cout << setprecision(15) << solver_container[iZone][MESH_0][FLOW_SOL]->node[iPoint]->GetSolution(0) << " ";
+      //cout << endl;
+      //for (int iPoint = 1000; iPoint < 1010; iPoint++) 
+        //cout << solver_container[iZone][MESH_0][FLOW_SOL]->node[iPoint]->GetSolution_time_n(0) << " ";
+      //cout << endl;
+      //for (int iPoint = 1000; iPoint < 1010; iPoint++) 
+        //cout << solver_container[iZone][MESH_0][FLOW_SOL]->node[iPoint]->GetSolution_time_n1(0) << " ";
+      //cout << endl;
+    //}
+    
     /*--- At each pseudo time-step updates transfer data ---*/
     for (iZone = 0; iZone < nZone; iZone++)   
       for (jZone = 0; jZone < nZone; jZone++)
         if(jZone != iZone && transfer_container[iZone][jZone] != NULL)
-          cout << "Before TransferData. ";
           Transfer_Data(iZone, jZone);
-          cout << " After TransferData." << endl;
     /*--- For each zone runs one single iteration ---*/
 
     for (iZone = 0; iZone < nZone; iZone++) {
       config_container[iZone]->SetIntIter(IntIter);
-      cout << "Before Iterate. ";
       iteration_container[iZone]->Iterate(output, integration_container, geometry_container, solver_container, numerics_container, config_container, surface_movement, grid_movement, FFDBox, iZone);
-      cout << " After Iterate." << endl;
     }
 
 
-  for (iZone = 0; iZone < nZone; iZone++) {
-    if (rank == MASTER_NODE && ((ExtIter == 0) || (config_container[iZone]->GetUnsteady_Simulation() != STEADY)) ) {
-        cout << "Reference. At IntIter: " << IntIter;
-      cout << " Zone " << iZone << ": log10[Conservative 0]: "<< setprecision(15) << log10(solver_container[iZone][MESH_0][FLOW_SOL]->GetRes_RMS(0)) << endl;
-      if ( config_container[iZone]->GetKind_Turb_Model() != NONE && !config_container[iZone]->GetFrozen_Visc_Disc()) {
-        cout <<"       log10[RMS k]: " << log10(solver_container[iZone][MESH_0][TURB_SOL]->GetRes_RMS(0)) << endl;
-      }
-    }
-  }
+  //for (iZone = 0; iZone < nZone; iZone++) {
+    //if (rank == MASTER_NODE && ((ExtIter == 0) || (config_container[iZone]->GetUnsteady_Simulation() != STEADY)) ) {
+        //cout << "Reference. At IntIter: " << IntIter;
+      //cout << " Zone " << iZone << ": log10[Conservative 0]: "<< setprecision(15) << log10(solver_container[iZone][MESH_0][FLOW_SOL]->GetRes_RMS(0)) << endl;
+      //if ( config_container[iZone]->GetKind_Turb_Model() != NONE && !config_container[iZone]->GetFrozen_Visc_Disc()) {
+        //cout <<"       log10[RMS k]: " << log10(solver_container[iZone][MESH_0][TURB_SOL]->GetRes_RMS(0)) << endl;
+      //}
+    //}
+  //}
 
     /*--- Check convergence in each zone --*/
-    cout << "Before CheckConvergence. ";
     checkConvergence = 0;
     for (iZone = 0; iZone < nZone; iZone++)
     checkConvergence += (int) integration_container[iZone][FLOW_SOL]->GetConvergence();
-    cout << " After CheckConvergence. " << endl;
 
     /*--- If convergence was reached in every zone --*/
 
@@ -4089,10 +4342,15 @@ void CDiscAdjFluidDriver::Run() {
     nIntIter = 1;
 
   for (iZone = 0; iZone < nZone; iZone++) {
-    cout <<  "Starting iteration container Preprocessing." << endl;
-    iteration_container[iZone]->Preprocess(output, integration_container, geometry_container,
+      if (config_container[ZONE_0]->GetCheckpointing()) {
+          iteration_container[iZone]->PreprocessForCheckpointing(output, integration_container, geometry_container,
                                                      solver_container, numerics_container, config_container,
                                                      surface_movement, grid_movement, FFDBox, iZone);
+      } else {
+          iteration_container[iZone]->Preprocess(output, integration_container, geometry_container,
+                                                     solver_container, numerics_container, config_container,
+                                                     surface_movement, grid_movement, FFDBox, iZone);
+     }
   }
 
 
@@ -4381,20 +4639,20 @@ void CDiscAdjFluidDriver::DirectRun(){
   
   //for (IntIter = 0; IntIter < nIntIter; IntIter++) {
       
-    /*--- Print cons[0] for the first 10 points for the timesteps n-1, n, n+1 ---*/
-      for(iZone = 0; iZone < nZone; iZone++) {
-      /*--- Print cons[0] for the first 10 points for the timesteps n-1, n, n+1 ---*/
-      cout << "Print Cons[0] for the first 10 points in the mesh. 1st Solution, 2nd Solution_n, 3rd Solution_n1 " << endl;
-      for (int iPoint = 1000; iPoint < 1010; iPoint++) 
-        cout << setprecision(15) << solver_container[iZone][MESH_0][FLOW_SOL]->node[iPoint]->GetSolution(0) << " ";
-      cout << endl;
-      for (int iPoint = 1000; iPoint < 1010; iPoint++) 
-        cout << solver_container[iZone][MESH_0][FLOW_SOL]->node[iPoint]->GetSolution_time_n(0) << " ";
-      cout << endl;
-      for (int iPoint = 1000; iPoint < 1010; iPoint++) 
-        cout << solver_container[iZone][MESH_0][FLOW_SOL]->node[iPoint]->GetSolution_time_n1(0) << " ";
-      cout << endl;
-    }
+    ///*--- Print cons[0] for the first 10 points for the timesteps n-1, n, n+1 ---*/
+      //for(iZone = 0; iZone < nZone; iZone++) {
+      ///*--- Print cons[0] for the first 10 points for the timesteps n-1, n, n+1 ---*/
+      //cout << "Print Cons[0] for the first 10 points in the mesh. 1st Solution, 2nd Solution_n, 3rd Solution_n1 " << endl;
+      //for (int iPoint = 1000; iPoint < 1010; iPoint++) 
+        //cout << setprecision(15) << solver_container[iZone][MESH_0][FLOW_SOL]->node[iPoint]->GetSolution(0) << " ";
+      //cout << endl;
+      //for (int iPoint = 1000; iPoint < 1010; iPoint++) 
+        //cout << solver_container[iZone][MESH_0][FLOW_SOL]->node[iPoint]->GetSolution_time_n(0) << " ";
+      //cout << endl;
+      //for (int iPoint = 1000; iPoint < 1010; iPoint++) 
+        //cout << solver_container[iZone][MESH_0][FLOW_SOL]->node[iPoint]->GetSolution_time_n1(0) << " ";
+      //cout << endl;
+    //}
       
   /*--- Do one iteration of the direct solver  --*/
 
@@ -4412,19 +4670,8 @@ void CDiscAdjFluidDriver::DirectRun(){
     direct_iteration[iZone]->Iterate(output, integration_container, geometry_container, solver_container, numerics_container, config_container, surface_movement, grid_movement, FFDBox, iZone);
   }
   
-      /*--- Print residuals in the first iteration ---*/
-
-  for (iZone = 0; iZone < nZone; iZone++) {
-    if (rank == MASTER_NODE && ((ExtIter == 0) || (config_container[iZone]->GetUnsteady_Simulation() != STEADY)) ) {
-        cout << "At IntIter: " << IntIter;
-      cout << " Zone " << iZone << ": log10[Conservative 0]: "<< log10(solver_container[iZone][MESH_0][FLOW_SOL]->GetRes_RMS(0)) << endl;
-      if ( config_container[iZone]->GetKind_Turb_Model() != NONE && !config_container[iZone]->GetFrozen_Visc_Disc()) {
-        cout <<"       log10[RMS k]: " << log10(solver_container[iZone][MESH_0][TURB_SOL]->GetRes_RMS(0)) << endl;
-      }
-    }
- // }
   
-}
+//}
 
   //cout << "Directly before error message in DirectRun()." << endl;
   //throw std::invalid_argument("One timestep done, exiting.");
@@ -4451,7 +4698,6 @@ void CDiscAdjFluidDriver::PrimalAdvance(){
   //as it is a simple primal solver restart, maybe just set ExtIter to 0 at the beginning of every advance cycle
   if (ExtIter == 0) {
     for (iZone = 0; iZone < nZone; iZone++) {
-    cout << "Iteration container Preprocess." << endl;
     /*--- loads time steps for adjoint taping ---*/
     //iteration_container[iZone]->Preprocess(output, integration_container, geometry_container, solver_container, numerics_container, config_container, surface_movement, grid_movement, FFDBox, iZone);
     
@@ -4486,18 +4732,18 @@ void CDiscAdjFluidDriver::PrimalAdvance(){
 
   for (IntIter = 0; IntIter < nIntIter; IntIter++) {
       
-            /*--- Print cons[0] for the first 10 points for the timesteps n-1, n, n+1 ---*/
+      /*--- Print cons[0] for the first 10 points for the timesteps n-1, n, n+1 ---*/
       for(iZone = 0; iZone < nZone; iZone++) {
       /*--- Print cons[0] for the first 10 points for the timesteps n-1, n, n+1 ---*/
       cout << "Print Cons[0] for the first 10 points in the mesh. 1st Solution, 2nd Solution_n, 3rd Solution_n1 " << endl;
       for (int iPoint = 1000; iPoint < 1010; iPoint++) 
-        cout << setprecision(15) << solver_container[iZone][MESH_0][FLOW_SOL]->node[iPoint]->GetSolution(0) << " ";
+        cout << setprecision(15) << scientific << solver_container[iZone][MESH_0][FLOW_SOL]->node[iPoint]->GetSolution(0) << " ";
       cout << endl;
       for (int iPoint = 1000; iPoint < 1010; iPoint++) 
-        cout << solver_container[iZone][MESH_0][FLOW_SOL]->node[iPoint]->GetSolution_time_n(0) << " ";
+        cout << setprecision(15) << scientific << solver_container[iZone][MESH_0][FLOW_SOL]->node[iPoint]->GetSolution_time_n(0) << " ";
       cout << endl;
       for (int iPoint = 1000; iPoint < 1010; iPoint++) 
-        cout << solver_container[iZone][MESH_0][FLOW_SOL]->node[iPoint]->GetSolution_time_n1(0) << " ";
+        cout << setprecision(15) << scientific << solver_container[iZone][MESH_0][FLOW_SOL]->node[iPoint]->GetSolution_time_n1(0) << " ";
       cout << endl;
     }
       
@@ -4515,27 +4761,28 @@ void CDiscAdjFluidDriver::PrimalAdvance(){
     
     config_container[iZone]->SetIntIter(IntIter);
     direct_iteration[iZone]->Iterate(output, integration_container, geometry_container, solver_container, numerics_container, config_container, surface_movement, grid_movement, FFDBox, iZone);
-    cout << "Jacobian set to zero." << endl;
+    //cout << "Jacobian set to zero." << endl;
     //See CEuler/NSSolver::Preprocessing, jacobian is not set to zero as it is needed for taping.
     solver_container[iZone][MESH_0][FLOW_SOL]->Jacobian.SetValZero();
   }
   
-    /*--- Print residuals in the first iteration ---*/
-
-  for (iZone = 0; iZone < nZone; iZone++) {
-    if (rank == MASTER_NODE && ((ExtIter == 0) || (config_container[iZone]->GetUnsteady_Simulation() != STEADY)) ) {
-        cout << "At IntIter: " << IntIter;
-      cout << " Zone " << iZone << ": log10[Conservative 0]: "<< log10(solver_container[iZone][MESH_0][FLOW_SOL]->GetRes_RMS(0)) << endl;
-      if ( config_container[iZone]->GetKind_Turb_Model() != NONE && !config_container[iZone]->GetFrozen_Visc_Disc()) {
-        cout <<"       log10[RMS k]: " << log10(solver_container[iZone][MESH_0][TURB_SOL]->GetRes_RMS(0)) << endl;
-      }
-    }
-  }
+  ///*--- Print residuals in the first iteration ---*/
+  //for (iZone = 0; iZone < nZone; iZone++) {
+    //if (rank == MASTER_NODE && ((ExtIter == 0) || (config_container[iZone]->GetUnsteady_Simulation() != STEADY)) ) {
+        //cout << "At IntIter: " << IntIter;
+      //cout << " Zone " << iZone << ": log10[Conservative 0]: "<< log10(solver_container[iZone][MESH_0][FLOW_SOL]->GetRes_RMS(0)) << endl;
+      //if ( config_container[iZone]->GetKind_Turb_Model() != NONE && !config_container[iZone]->GetFrozen_Visc_Disc()) {
+        //cout <<"       log10[RMS k]: " << log10(solver_container[iZone][MESH_0][TURB_SOL]->GetRes_RMS(0)) << endl;
+      //}
+    //}
+  //}
+  
 }
 }
 
 void CDiscAdjFluidDriver::Update() {
-  /*--- Advance fowward in time for Primal steps ---*/
+    
+  /*--- Advance fowrard in time for Primal steps ---*/
   if (config_container[ZONE_0]->GetCheckpointing()) {
     for(iZone = 0; iZone < nZone; iZone++)
       direct_iteration[iZone]->Update(output, integration_container, geometry_container,

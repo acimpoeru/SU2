@@ -108,6 +108,21 @@ public:
                           CVolumetricMovement **grid_movement,
                           CFreeFormDefBox*** FFDBox,
                           unsigned short val_iZone);
+                          
+  /*!
+   * \brief A virtual member.
+   * \param[in] ??? - Description here.
+   */
+  virtual void PreprocessForCheckpointing(COutput *output,
+                          CIntegration ***integration_container,
+                          CGeometry ***geometry_container,
+                          CSolver ****solver_container,
+                          CNumerics *****numerics_container,
+                          CConfig **config_container,
+                          CSurfaceMovement **surface_movement,
+                          CVolumetricMovement **grid_movement,
+                          CFreeFormDefBox*** FFDBox,
+                          unsigned short val_iZone){}
   
   /*!
    * \brief A virtual member.
@@ -976,6 +991,21 @@ public:
    * \param[in] ??? - Description here.
    */
   void Preprocess(COutput *output,
+                  CIntegration ***integration_container,
+                  CGeometry ***geometry_container,
+                  CSolver ****solver_container,
+                  CNumerics *****numerics_container,
+                  CConfig **config_container,
+                  CSurfaceMovement **surface_movement,
+                  CVolumetricMovement **grid_movement,
+                  CFreeFormDefBox*** FFDBox,
+                  unsigned short val_iZone);
+                  
+  /*!
+   * \brief Preprocessing to prepare for an iteration of the physics.
+   * \param[in] ??? - Description here.
+   */
+  void PreprocessForCheckpointing(COutput *output,
                   CIntegration ***integration_container,
                   CGeometry ***geometry_container,
                   CSolver ****solver_container,
