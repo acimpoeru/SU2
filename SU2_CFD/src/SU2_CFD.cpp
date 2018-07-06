@@ -164,12 +164,11 @@ int main(int argc, char *argv[]) {
   /*--- Launch the main external loop of the solver ---*/
   cout << "Before StartSolver()." << endl;
   if ( checkpointing ) {
-      cout << "In StartSolver() with CP." << endl;
-    //driver->StartSolverCP(); 
+    cout << "In StartSolver() with CP." << endl;
     driver->StartSolverRevolve();   
   } else {
-      cout << "In StartSolver() without CP." << endl;
-  driver->StartSolver();
+    cout << "In StartSolver() without CP." << endl;
+    driver->StartSolver();
   }
   
 

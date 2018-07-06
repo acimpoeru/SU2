@@ -3390,8 +3390,10 @@ void CDriver::StartSolverCP() {
 }
 
 void CDriver::StartSolverRevolve() {
+    if (rank == MASTER_NODE) cout << endl <<"------------------------------ Begin Solver -----------------------------" << endl;
+    
     Revolve *r;
-    int info,snaps,steps,snaps_in_ram;
+    int info, snaps, steps, snaps_in_ram, depth;
     enum ACTION::action whatodo;
     bool turbulent = ( config_container[ZONE_0]->GetKind_Solver() == DISC_ADJ_RANS );
     bool CP_in_RAM = true;
@@ -3403,6 +3405,7 @@ void CDriver::StartSolverRevolve() {
     steps = config_container[ZONE_0]->GetCheckpointingSteps(); // !! This whould be ExtIter
     snaps = config_container[ZONE_0]->GetCheckpointingSnaps();
     snaps_in_ram = config_container[ZONE_0]->GetCheckpointingSnapsInRAM();
+    depth = config_container[ZONE_0]->GetCheckpointingDepth();
     info = 3;// highest output
 
     // Constructor for Offline Checkpointing with Multi-Stage
@@ -3425,9 +3428,9 @@ void CDriver::StartSolverRevolve() {
             if (r->getwhere()) {
                 /*--- Save Checkpoint in RAM ---*/
                 for(iPoint=0; iPoint < geometry_container[ZONE_0][MESH_0]->GetnPoint(); iPoint++) {
-                    solver_container[ZONE_0][MESH_0][FLOW_SOL]->node[iPoint]->Set_Checkpoint(r->getcheck()*3);
+                    solver_container[ZONE_0][MESH_0][FLOW_SOL]->node[iPoint]->Set_Checkpoint(r->getcheck());
                     if (turbulent){
-                        solver_container[ZONE_0][MESH_0][TURB_SOL]->node[iPoint]->Set_Checkpoint(r->getcheck()*3);
+                        solver_container[ZONE_0][MESH_0][TURB_SOL]->node[iPoint]->Set_Checkpoint(r->getcheck());
                     }
                 }
                 
@@ -3435,70 +3438,70 @@ void CDriver::StartSolverRevolve() {
                 /*--- takeshot on DISK, 3 timesteps have to be saved here! Storing wrong Primitives for n and n1. Storage always from sol position (therefore solution_old as intermediate container) ---*/
                 
                 /*--- Store Sol, setExtIter necessary for output with correct number  ---*/
-                config_container[ZONE_0]->SetExtIter(100 + r->getcheck()*3 + 0);
-                config_container[ZONE_0]->SetKind_Solver(NAVIER_STOKES); config_container[ZONE_0]->SetDiscrete_Adjoint(false);
-                output->SetResult_Files_Parallel(solver_container, geometry_container, config_container, 100 + r->getcheck()*3 + 0, nZone);
+                config_container[ZONE_0]->SetExtIter(1000 + r->getcheck()*3 + 0);
+                config_container[ZONE_0]->SetKind_Solver(NAVIER_STOKES);
+                if (turbulent) config_container[ZONE_0]->SetKind_Solver(RANS);
+                config_container[ZONE_0]->SetDiscrete_Adjoint(false);
+                output->SetResult_Files_Parallel(solver_container, geometry_container, config_container, 1000 + r->getcheck()*3 + 0, nZone);
                 config_container[ZONE_0]->SetKind_Solver(DISC_ADJ_NAVIER_STOKES); config_container[ZONE_0]->SetDiscrete_Adjoint(true);
+                if (turbulent) config_container[ZONE_0]->SetKind_Solver(DISC_ADJ_RANS);
 
                 /*--- store current solution in sol_old (to not kill the advance cycle), pushup n ---*/
-                for (iMesh=0; iMesh<=config_container[ZONE_0]->GetnMGLevels();iMesh++) {
-                    for(iPoint=0; iPoint<geometry_container[ZONE_0][iMesh]->GetnPoint();iPoint++) {
-                        solver_container[ZONE_0][iMesh][FLOW_SOL]->node[iPoint]->Set_OldSolution();
-                        if (turbulent){
-                            solver_container[ZONE_0][iMesh][TURB_SOL]->node[iPoint]->Set_OldSolution();
-                        }
+                for(iPoint=0; iPoint<geometry_container[ZONE_0][MESH_0]->GetnPoint();iPoint++) {
+                    solver_container[ZONE_0][MESH_0][FLOW_SOL]->node[iPoint]->Set_OldSolution();
+                    if (turbulent){
+                        solver_container[ZONE_0][MESH_0][TURB_SOL]->node[iPoint]->Set_OldSolution();
                     }
                 }
+
                 
                 /*--- Push n to sol ---*/
-                for (iMesh=0; iMesh<=config_container[ZONE_0]->GetnMGLevels();iMesh++) {
-                    for(iPoint=0; iPoint<geometry_container[ZONE_0][iMesh]->GetnPoint();iPoint++) {
-                        solver_container[ZONE_0][iMesh][FLOW_SOL]->node[iPoint]->SetSolution(solver_container[ZONE_0][iMesh][FLOW_SOL]->node[iPoint]->GetSolution_time_n());
-                        if (turbulent) {
-                            solver_container[ZONE_0][iMesh][TURB_SOL]->node[iPoint]->SetSolution(solver_container[ZONE_0][iMesh][TURB_SOL]->node[iPoint]->GetSolution_time_n());
-                        }
+                for(iPoint=0; iPoint<geometry_container[ZONE_0][MESH_0]->GetnPoint();iPoint++) {
+                    solver_container[ZONE_0][MESH_0][FLOW_SOL]->node[iPoint]->SetSolution(solver_container[ZONE_0][MESH_0][FLOW_SOL]->node[iPoint]->GetSolution_time_n());
+                    if (turbulent) {
+                        solver_container[ZONE_0][MESH_0][TURB_SOL]->node[iPoint]->SetSolution(solver_container[ZONE_0][MESH_0][TURB_SOL]->node[iPoint]->GetSolution_time_n());
                     }
                 }
 
                 /*--- Store Sol (i.e. n) ---*/
-                config_container[ZONE_0]->SetExtIter(100 + r->getcheck()*3 + 1);
+                config_container[ZONE_0]->SetExtIter(1000 + r->getcheck()*3 + 1);
                 config_container[ZONE_0]->SetKind_Solver(NAVIER_STOKES); config_container[ZONE_0]->SetDiscrete_Adjoint(false);
-                output->SetResult_Files_Parallel(solver_container, geometry_container, config_container, 100 + r->getcheck()*3 + 1, nZone);
+                if (turbulent) config_container[ZONE_0]->SetKind_Solver(RANS);
+                output->SetResult_Files_Parallel(solver_container, geometry_container, config_container, 1000 + r->getcheck()*3 + 1, nZone);
                 config_container[ZONE_0]->SetKind_Solver(DISC_ADJ_NAVIER_STOKES); config_container[ZONE_0]->SetDiscrete_Adjoint(true);
+                if (turbulent) config_container[ZONE_0]->SetKind_Solver(DISC_ADJ_RANS);
 
                 /*--- pushup n1 directly to sol, omitting n which stays on the right place ---*/
-                for (iMesh=0; iMesh<=config_container[ZONE_0]->GetnMGLevels();iMesh++) {
-                    for(iPoint=0; iPoint<geometry_container[ZONE_0][iMesh]->GetnPoint();iPoint++) {
-                        solver_container[ZONE_0][iMesh][FLOW_SOL]->node[iPoint]->SetSolution(solver_container[ZONE_0][iMesh][FLOW_SOL]->node[iPoint]->GetSolution_time_n1());
-                        if (turbulent) {
-                            solver_container[ZONE_0][iMesh][TURB_SOL]->node[iPoint]->SetSolution(solver_container[ZONE_0][iMesh][TURB_SOL]->node[iPoint]->GetSolution_time_n1());
-                        }
+                for(iPoint=0; iPoint<geometry_container[ZONE_0][MESH_0]->GetnPoint();iPoint++) {
+                    solver_container[ZONE_0][MESH_0][FLOW_SOL]->node[iPoint]->SetSolution(solver_container[ZONE_0][MESH_0][FLOW_SOL]->node[iPoint]->GetSolution_time_n1());
+                    if (turbulent) {
+                        solver_container[ZONE_0][MESH_0][TURB_SOL]->node[iPoint]->SetSolution(solver_container[ZONE_0][MESH_0][TURB_SOL]->node[iPoint]->GetSolution_time_n1());
                     }
                 }
 
                 /*--- Store Sol ---*/
-                config_container[ZONE_0]->SetExtIter(100 + r->getcheck()*3 + 2);
+                config_container[ZONE_0]->SetExtIter(1000 + r->getcheck()*3 + 2);
                 config_container[ZONE_0]->SetKind_Solver(NAVIER_STOKES); config_container[ZONE_0]->SetDiscrete_Adjoint(false);
-                output->SetResult_Files_Parallel(solver_container, geometry_container, config_container, 100 + r->getcheck()*3 + 2, nZone);
+                if (turbulent) config_container[ZONE_0]->SetKind_Solver(RANS);
+                output->SetResult_Files_Parallel(solver_container, geometry_container, config_container, 1000 + r->getcheck()*3 + 2, nZone);
                 config_container[ZONE_0]->SetKind_Solver(DISC_ADJ_NAVIER_STOKES); config_container[ZONE_0]->SetDiscrete_Adjoint(true);
+                if (turbulent) config_container[ZONE_0]->SetKind_Solver(DISC_ADJ_RANS);
 
                 /*--- restore Sol from sol_old ---*/
-                for (iMesh=0; iMesh<=config_container[ZONE_0]->GetnMGLevels();iMesh++) {
-                    for(iPoint=0; iPoint<geometry_container[ZONE_0][iMesh]->GetnPoint();iPoint++) {
-                        solver_container[ZONE_0][iMesh][FLOW_SOL]->node[iPoint]->SetSolution(solver_container[ZONE_0][iMesh][FLOW_SOL]->node[iPoint]->GetSolution_Old());
-                        if (turbulent) {
-                            solver_container[ZONE_0][iMesh][TURB_SOL]->node[iPoint]->SetSolution(solver_container[ZONE_0][iMesh][TURB_SOL]->node[iPoint]->GetSolution_Old());
-                        }
+                for(iPoint=0; iPoint<geometry_container[ZONE_0][MESH_0]->GetnPoint();iPoint++) {
+                    solver_container[ZONE_0][MESH_0][FLOW_SOL]->node[iPoint]->SetSolution(solver_container[ZONE_0][MESH_0][FLOW_SOL]->node[iPoint]->GetSolution_Old());
+                    if (turbulent) {
+                        solver_container[ZONE_0][MESH_0][TURB_SOL]->node[iPoint]->SetSolution(solver_container[ZONE_0][MESH_0][TURB_SOL]->node[iPoint]->GetSolution_Old());
                     }
                 }
 
             }
             if(info > 1)
-                cout << " takeshot at " << setw(6) << r->getcapo() << " in CP " << r->getcheck() << endl;
+                if (rank == MASTER_NODE) cout << " takeshot at " << setw(6) << r->getcapo() << " in CP " << r->getcheck() << endl;
             if(r->getwhere())
-                cout << "takeshot in RAM " << endl;
+                if (rank == MASTER_NODE) cout << "takeshot in RAM " << endl;
             else
-                cout << "takeshot in ROM " << endl;
+                if (rank == MASTER_NODE) cout << "takeshot in ROM " << endl;
 
         }
         if (whatodo == ACTION::advance) 
@@ -3507,7 +3510,7 @@ void CDriver::StartSolverRevolve() {
             /*--- +1 because first step was already made in the first takeshot. Variable "j" is here taken to be ExtIter ---*/
             for(int j=r->getoldcapo()+1;j < r->getcapo()+1;j++)
             {   
-                cout << "ADVANCE: " << j << endl;
+                if (rank == MASTER_NODE) cout << "ADVANCE: " << j << endl;
                 /*--- Here Flow-solver initial conditions are called, well noe not anymore as first step is taken at takeshot ---*/  
                 PreprocessExtIter(j);
 
@@ -3526,7 +3529,7 @@ void CDriver::StartSolverRevolve() {
             }
             
             if(info > 2)
-                cout << " advance to " << setw(7) << r->getcapo() << endl;
+                if (rank == MASTER_NODE) cout << " advance to " << setw(7) << r->getcapo() << endl;
         }	
         if (whatodo == ACTION::firsturn)
         {
@@ -3542,7 +3545,7 @@ void CDriver::StartSolverRevolve() {
             ExtIter++;
 
             if(info > 2)
-                cout << " firsturn at " << setw(6) << r->getcapo() << endl;
+                if (rank == MASTER_NODE) cout << " firsturn at " << setw(6) << r->getcapo() << endl;
         }
         if (whatodo == ACTION::youturn) 
         {
@@ -3557,7 +3560,7 @@ void CDriver::StartSolverRevolve() {
             ExtIter++;
 
             if(info > 2)
-                cout << " youturn at " << setw(7) << r->getcapo() << endl;	
+                if (rank == MASTER_NODE) cout << " youturn at " << setw(7) << r->getcapo() << endl;	
         }
         if (whatodo == ACTION::restore) 
         {
@@ -3566,9 +3569,9 @@ void CDriver::StartSolverRevolve() {
 
                 /*--- Restore Checkpoint (conservatives) from RAM, with own routine ---*/
                 for(iPoint=0; iPoint < geometry_container[ZONE_0][MESH_0]->GetnPoint(); iPoint++) {
-                    solver_container[ZONE_0][MESH_0][FLOW_SOL]->node[iPoint]->Restore_Checkpoint(r->getcheck()*3);
+                    solver_container[ZONE_0][MESH_0][FLOW_SOL]->node[iPoint]->Restore_Checkpoint(r->getcheck());
                     if (turbulent) {
-                        solver_container[ZONE_0][MESH_0][TURB_SOL]->node[iPoint]->Restore_Checkpoint(r->getcheck()*3);
+                        solver_container[ZONE_0][MESH_0][TURB_SOL]->node[iPoint]->Restore_Checkpoint(r->getcheck());
                     }
                 }
 
@@ -3578,8 +3581,10 @@ void CDriver::StartSolverRevolve() {
 
                 /*--- Load n1 ---*/
                 //last variable updategeo always true except for FSI
-                int val_iter = 100 + r->getcheck()*3 + 2;
+                int val_iter = 1000 + r->getcheck()*3 + 2;
                 solver_container[ZONE_0][MESH_0][FLOW_SOL]->LoadRestart(geometry_container[ZONE_0], solver_container[ZONE_0], config_container[ZONE_0], val_iter, true);
+                if (turbulent) solver_container[ZONE_0][MESH_0][TURB_SOL]->LoadRestart(geometry_container[ZONE_0], solver_container[ZONE_0], config_container[ZONE_0], val_iter, true);
+
 
                 /*--- pushback twice ---*/
                 for (iPoint = 0; iPoint < geometry_container[ZONE_0][MESH_0]->GetnPoint(); iPoint++) {
@@ -3592,8 +3597,9 @@ void CDriver::StartSolverRevolve() {
                 }
 
                 /*--- Load n ---*/
-                val_iter = 100 + r->getcheck()*3 + 1;
+                val_iter = 1000 + r->getcheck()*3 + 1;
                 solver_container[ZONE_0][MESH_0][FLOW_SOL]->LoadRestart(geometry_container[ZONE_0], solver_container[ZONE_0], config_container[ZONE_0], val_iter, true);
+                if (turbulent) solver_container[ZONE_0][MESH_0][TURB_SOL]->LoadRestart(geometry_container[ZONE_0], solver_container[ZONE_0], config_container[ZONE_0], val_iter, true);
 
                 /*--- pushback once ---*/
                 for (iPoint = 0; iPoint < geometry_container[ZONE_0][MESH_0]->GetnPoint(); iPoint++) {
@@ -3604,15 +3610,16 @@ void CDriver::StartSolverRevolve() {
                 }
 
                 /*--- Load sol ---*/
-                val_iter = 100 + r->getcheck()*3 + 0;
+                val_iter = 1000 + r->getcheck()*3 + 0;
                 solver_container[ZONE_0][MESH_0][FLOW_SOL]->LoadRestart(geometry_container[ZONE_0], solver_container[ZONE_0], config_container[ZONE_0], val_iter, true);
+                if (turbulent) solver_container[ZONE_0][MESH_0][TURB_SOL]->LoadRestart(geometry_container[ZONE_0], solver_container[ZONE_0], config_container[ZONE_0], val_iter, true);
             }
             if(info > 2)
-                cout << " restore at " << setw(7) << r->getcapo() << " in CP " << r->getcheck() << endl;
+                if (rank == MASTER_NODE) cout << " restore at " << setw(7) << r->getcapo() << " in CP " << r->getcheck() << endl;
             if(r->getwhere())
-                cout << "restore in RAM " << endl;
+                if (rank == MASTER_NODE) cout << "restore in RAM " << endl;
             else
-                cout << "restore in ROM " << endl;
+                if (rank == MASTER_NODE) cout << "restore in ROM " << endl;
         }
         if (whatodo == ACTION::error)
         {

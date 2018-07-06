@@ -41,9 +41,11 @@ inline bool CConfig::GetCheckpointing(void) { return Checkpointing; };
 
 inline unsigned long CConfig::GetCheckpointingSteps(void) { return CheckpointingSteps; };
 
-inline unsigned long CConfig::GetCheckpointingSnaps(void) { return CheckpointingSnaps; };
+inline unsigned short CConfig::GetCheckpointingSnaps(void) { return CheckpointingSnaps; };
 
-inline unsigned long CConfig::GetCheckpointingSnapsInRAM(void) { return CheckpointingSnapsInRAM; };
+inline unsigned short CConfig::GetCheckpointingSnapsInRAM(void) { return CheckpointingSnapsInRAM; };
+
+inline unsigned short CConfig::GetCheckpointingDepth(void) { return CheckpointingDepth; };
 
 inline su2double CConfig::GetHTP_Axis(unsigned short val_index) { return HTP_Axis[val_index]; }
 

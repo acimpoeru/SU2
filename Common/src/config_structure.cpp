@@ -645,12 +645,15 @@ void CConfig::SetConfig_Options(unsigned short val_iZone, unsigned short val_nZo
   
   /*!\brief CHECKPOINTING \n DESCRIPTION: Use Checkpointing \n Options: NO, YES \ingroup Config */
   addBoolOption("CHECKPOINTING", Checkpointing, false);
-  /*!\brief CHECKPOINTING_SNAPS \n DESCRIPTION: Number of stored Solutions (Snapshots) \ingroup Config*/
-  addUnsignedLongOption("CHECKPOINTING_SNAPS", CheckpointingSnaps, 10);
+  /*!\brief CHECKPOINTING_SNAPS \n DESCRIPTION: Number of stored Checkpoints. Stored solutions = Checkpoints * CheckpointDepth \ingroup Config*/
+  addUnsignedShortOption("CHECKPOINTING_SNAPS", CheckpointingSnaps, 10);
+  /*!\brief CHECKPOINTING_DEPTH \n DESCRIPTION: Number of stored Solutions (Snapshots) for one Checkpoint. DT_2nd 2 or 3. DT_1ST 1or 2 \ingroup Config*/
+  addUnsignedShortOption("CHECKPOINTING_DEPTH", CheckpointingDepth, 3);
   /*!\brief CHECKPOINTING_SNAPS_IN_RAM \n DESCRIPTION: Number of stored Solutions (Snapshots) in Memory \ingroup Config*/
-  addUnsignedLongOption("CHECKPOINTING_SNAPS_IN_RAM", CheckpointingSnapsInRAM, 0);
+  addUnsignedShortOption("CHECKPOINTING_SNAPS_IN_RAM", CheckpointingSnapsInRAM, 0);
   /*!\brief CHECKPOINTING_STEPS \n DESCRIPTION: Number of steps (timesteps) that will be done \ingroup Config*/
   addUnsignedLongOption("CHECKPOINTING_STEPS", CheckpointingSteps, 99999);
+  
   
   /*!\brief RESTART_SOL \n DESCRIPTION: Restart solution from native solution file \n Options: NO, YES \ingroup Config */
   addBoolOption("RESTART_SOL", Restart, false);
@@ -4430,14 +4433,6 @@ void CConfig::SetOutput(unsigned short val_software, unsigned short val_izone) {
 	   cout << "Fluid-Structure Interaction." << endl;
 	}
 
-  if(Checkpointing) {
-      cout << "Using Checkpointing with the CDiscAdjFluidDriver." << endl;
-      cout << "Steps: " << CheckpointingSteps << " ExtIter" << nExtIter << endl;
-      cout << "Snaps: " << CheckpointingSnaps << endl;
-      cout << "Snaps in RAM: " << CheckpointingSnapsInRAM << endl;
-      
-  }
-
   if (DiscreteAdjoint) {
      cout <<"Discrete Adjoint equations using Algorithmic Differentiation " << endl;
      cout <<"based on the physical case: ";
@@ -4719,6 +4714,15 @@ void CConfig::SetOutput(unsigned short val_software, unsigned short val_izone) {
 			break;
 		}
 	}
+
+    if(Checkpointing) {
+        cout << endl <<"---------------------- Checkpointing parameters ----------------------" << endl;
+        cout << "Using Checkpointing with the CDiscAdjFluidDriver." << endl;
+        cout << "Steps: " << CheckpointingSteps << " ExtIter" << nExtIter << endl;
+        cout << "Snaps: " << CheckpointingSnaps << endl;
+        cout << "Snaps in RAM: " << CheckpointingSnapsInRAM << endl;
+        cout << "Checkpoint Depth: " << CheckpointingDepth << endl;
+    }
 
 	if (val_software == SU2_DEF) {
 		cout << endl <<"---------------------- Grid deformation parameters ----------------------" << endl;

@@ -1755,7 +1755,7 @@ void CDiscAdjFluidIteration::Preprocess(COutput *output,
     
     /*--- this true and the later false make that 3 solution are loaded at every timestep (for checkpointing) ---*/
     
-    if (ExtIter == 0 || true){
+    if (ExtIter == 0 || config_container[ZONE_0]->GetCheckpointing()){
 
       if (dual_time_2nd || dual_time_1st) {
 
@@ -1801,7 +1801,7 @@ void CDiscAdjFluidIteration::Preprocess(COutput *output,
     }
 
 
-    if ((ExtIter > 0) && dual_time && false){
+    if ((ExtIter > 0) && dual_time && (!config_container[ZONE_0]->GetCheckpointing()) ){
 
       /*--- Load solution timestep n - 2 ---*/
 
@@ -1923,7 +1923,7 @@ void CDiscAdjFluidIteration::PreprocessForCheckpointing(COutput *output,
     
     /*--- this true and the later false make that 3 solution are loaded at every timestep (for checkpointing) ---*/
     
-    if (ExtIter == 0 || true){
+    if (ExtIter == 0 || config_container[ZONE_0]->GetCheckpointing() ){
 
       if (dual_time_2nd || dual_time_1st) {
 

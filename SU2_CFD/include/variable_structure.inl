@@ -129,8 +129,6 @@ inline void CVariable::SetAuxVarGradient(unsigned short iDim, su2double val_grad
 
 inline su2double *CVariable::GetSolution(void) { return Solution; }
 
-inline su2double *CVariable::GetCheckpoint(unsigned short iCheckpoint) { return Checkpoints[iCheckpoint]; }
-
 inline su2double *CVariable::GetSolution_Old(void) { return Solution_Old; }
 
 inline su2double *CVariable::GetSolution_time_n(void) { return Solution_time_n; }

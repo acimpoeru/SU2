@@ -1007,9 +1007,11 @@ private:
   su2double Max_Beta; /*!< \brief Maximum Beta parameter (incompressible preconditioning) in the domain */
   ofstream *ConvHistFile;       /*!< \brief Store the pointer to each history file */
   bool Checkpointing; /*!< \brief Flag to know if Checkpointing is used */
-  unsigned long CheckpointingSnaps; /*!< \brief Number of Snapshots (stored Solutions) used */
+  unsigned short CheckpointingSnaps; /*!< \brief Number of Checkpoints used */
   unsigned long CheckpointingSteps; /*!< \brief Number of Steps (Timesteps)  */
-  unsigned long CheckpointingSnapsInRAM; /*!< \brief Number of Snapshots (stored Solutions) in Memory used  */
+  unsigned short CheckpointingSnapsInRAM; /*!< \brief Number of Checkpoints in Memory used  */
+  unsigned short CheckpointingDepth; /*!< \brief Number of Snapshots (stored Solutions) per Checkpoint  */
+
 
   /*--- all_options is a map containing all of the options. This is used during config file parsing
    to track the options which have not been set (so the default values can be used). Without this map
@@ -1339,10 +1341,10 @@ public:
   bool GetCheckpointing(void);
   
   /*!
-   * \brief Get the number of Snapshots that will be stored during Checkpointing.
+   * \brief Get the number of Checkpoints that will be stored during Checkpointing.
    * \return Number of Snapshots availabe.
    */
-  unsigned long GetCheckpointingSnaps(void);
+  unsigned short GetCheckpointingSnaps(void);
   
   /*!
    * \brief Get the number of steps that will be performed by the timestepping scheme.
@@ -1351,10 +1353,16 @@ public:
   unsigned long GetCheckpointingSteps(void);
   
   /*!
-   * \brief Get the number of Snapshots that will be stored in Memory during Checkpointing. Difference to Snaps will be stored on Disk.
+   * \brief Get the number of Checkpoints that will be stored in Memory during Checkpointing. Difference to Snaps will be stored on Disk.
    * \return Number of Snapshots available in RAM (Memory).
    */
-  unsigned long GetCheckpointingSnapsInRAM(void);
+  unsigned short GetCheckpointingSnapsInRAM(void);
+  
+  /*!
+   * \brief Get the number of Snapshots that will be stored per Checkpoint.
+   * \return Number of stored Solutions per Checkpoint.
+   */
+  unsigned short GetCheckpointingDepth(void);
 
   /*!
    * \brief Gets the number of zones in the mesh file.

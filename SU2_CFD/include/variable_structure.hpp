@@ -65,7 +65,6 @@ protected:
   su2double *Solution_time_n,  /*!< \brief Solution of the problem at time n for dual-time stepping technique. */
   *Solution_time_n1;      /*!< \brief Solution of the problem at time n-1 for dual-time stepping technique. */
   su2double **Gradient;    /*!< \brief Gradient of the solution of the problem. */
-  su2double **Checkpoints;   /*!< \brief Field to hold the primal Checkpoints for transient Adjoint computation. */
   su2double *Limiter;        /*!< \brief Limiter of the solution of the problem. */
   su2double *Solution_Max;    /*!< \brief Max solution for limiter computation. */
   su2double *Solution_Min;    /*!< \brief Min solution for limiter computation. */
@@ -92,7 +91,10 @@ protected:
                                                        note that this variable cannnot be static, it is possible to
                                                        have different number of nVar in the same problem. */
   su2double *Solution_Adj_Old;    /*!< \brief Solution of the problem in the previous AD-BGS iteration. */
+  su2double ***Checkpoints;   /*!< \brief Field to hold the primal Checkpoints for transient Adjoint computation. */
   unsigned short nCheckpoint; /*!< \brief number of checkpoints stored in RAM, necessary for "delete" in Deconstructor. */
+  unsigned short nCheckpointDepth; /*!< \brief number of checkpoints stored in RAM, necessary for "delete" in Deconstructor. */
+
   
 public:
   
@@ -353,13 +355,6 @@ public:
    * \return Pointer to the solution vector.
    */
   su2double *GetSolution(void);
-  
-  
-  /*!
-   * \brief Get the solution stored in the specified checkpoint.
-   * \return Pointer to the solution vector of the checkpoint.
-   */
-  su2double *GetCheckpoint(unsigned short iCheckpoint);
   
   /*!
    * \brief Get the old solution of the problem (Runge-Kutta method)

@@ -94,7 +94,7 @@ CVariable::CVariable(unsigned short val_nvar, CConfig *config) {
 
 CVariable::CVariable(unsigned short val_nDim, unsigned short val_nvar, CConfig *config) {
   
-  unsigned short iVar, iDim, iCheckpoint;
+  unsigned short iVar, iDim, iCheckpoint, iCheckpointDepth;
   
   /*--- Array initialization ---*/
   Solution = NULL;
@@ -145,15 +145,19 @@ CVariable::CVariable(unsigned short val_nDim, unsigned short val_nvar, CConfig *
 	  Solution_Adj_Old = new su2double [nVar];
 	}
     
-    /*--- if checkpointing is used, allocate & initialize Checkpoints memory ---*/
+    /*--- If checkpointing is used, allocate memory & initialize Checkpoints ---*/
     if (config->GetCheckpointing()) {
-        //The *3 is just temporarily for dual time stepping as 3 states have to be stored. Add another layer to Checkpoints to solve that
-        nCheckpoint = config->GetCheckpointingSnaps()*3;
-        Checkpoints = new su2double* [nCheckpoint];
+        nCheckpointDepth = config->GetCheckpointingDepth();
+        nCheckpoint = config->GetCheckpointingSnaps();
+        
+        Checkpoints = new su2double** [nCheckpoint];
         for (iCheckpoint = 0; iCheckpoint < nCheckpoint; iCheckpoint++) {
-            Checkpoints[iCheckpoint] = new su2double [nVar];
-            for (iVar = 0; iVar < nVar; iVar++) {
-                Checkpoints[iCheckpoint][iVar] = 0.0;
+            Checkpoints[iCheckpoint] = new su2double* [nCheckpointDepth];
+            for (iCheckpointDepth = 0; iCheckpointDepth < nCheckpointDepth; iCheckpointDepth++) {
+                Checkpoints[iCheckpoint][iCheckpointDepth] = new su2double [nVar];
+                for (iVar = 0; iVar < nVar; iVar++) {
+                    Checkpoints[iCheckpoint][iCheckpointDepth][iVar] = 0.0;
+                }
             }
         }
     }
@@ -161,7 +165,7 @@ CVariable::CVariable(unsigned short val_nDim, unsigned short val_nvar, CConfig *
 }
 
 CVariable::~CVariable(void) {
-  unsigned short iVar, iCheckpoint;
+  unsigned short iVar, iCheckpoint, iCheckpointDepth;
 
   if (Solution            != NULL) delete [] Solution;
   if (Solution_Old        != NULL) delete [] Solution_Old;
@@ -184,8 +188,12 @@ CVariable::~CVariable(void) {
   }
   
   if (Checkpoints != NULL) {
-    for (iCheckpoint = 0; iCheckpoint < nCheckpoint; iCheckpoint++)
+    for (iCheckpoint = 0; iCheckpoint < nCheckpoint; iCheckpoint++) {
+      for (iCheckpointDepth = 0; iCheckpointDepth < nCheckpointDepth; iCheckpointDepth++) {
+        delete [] Checkpoints[iCheckpoint][iCheckpointDepth];
+      }
       delete [] Checkpoints[iCheckpoint];
+    }
     delete [] Checkpoints;
   }
 
@@ -237,9 +245,9 @@ void CVariable::Set_Checkpoint(unsigned short iCheckpoint) {
   if (iCheckpoint < nCheckpoint) {
       
     for (unsigned short iVar = 0; iVar < nVar; iVar++) {
-      Checkpoints[iCheckpoint][iVar]   = Solution[iVar];
-      Checkpoints[iCheckpoint+1][iVar] = Solution_time_n[iVar];
-      Checkpoints[iCheckpoint+2][iVar] = Solution_time_n1[iVar];
+      Checkpoints[iCheckpoint][0][iVar]   = Solution[iVar];
+      Checkpoints[iCheckpoint][1][iVar]   = Solution_time_n[iVar];
+      Checkpoints[iCheckpoint][2][iVar]   = Solution_time_n1[iVar];
     }
       
   } else {
@@ -252,9 +260,9 @@ void CVariable::Restore_Checkpoint(unsigned short iCheckpoint) {
   if (iCheckpoint < nCheckpoint) {
       
     for (unsigned short iVar = 0; iVar < nVar; iVar++) {
-      Solution[iVar]         = Checkpoints[iCheckpoint][iVar];
-      Solution_time_n[iVar]  = Checkpoints[iCheckpoint+1][iVar];
-      Solution_time_n1[iVar] = Checkpoints[iCheckpoint+2][iVar];
+      Solution[iVar]         = Checkpoints[iCheckpoint][0][iVar];
+      Solution_time_n[iVar]  = Checkpoints[iCheckpoint][1][iVar];
+      Solution_time_n1[iVar] = Checkpoints[iCheckpoint][2][iVar];
     }
       
   } else {
